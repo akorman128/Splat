@@ -1,34 +1,29 @@
 import "server-only";
+import { z } from "zod";
 
 // Shared schema + prompt for the structured "title + 3 suggestions" call.
 // Three separate string properties (not an array with minItems/maxItems)
 // because strict-mode schema support for array-length constraints differs
 // between providers; three required fields guarantees exactly three.
+//
+// Declared as a Zod object so both adapters can hand it to their SDK's
+// structured-output helper (zodOutputFormat / zodTextFormat) and use the
+// SDK's own parse path. That validates the payload as well as decoding it —
+// a hand-rolled JSON.parse returns `any`, so a model that omitted a field
+// (or a truncated body) only blew up later, on `.trim()` of undefined.
 
-export const FOLLOWUPS_SCHEMA = {
-  type: "object",
-  properties: {
-    title: {
-      type: "string",
-      description:
-        "A description of the gist of the user's prompt, six words maximum. Not a truncation of the prompt text.",
-    },
-    suggestion1: {
-      type: "string",
-      description: "A concrete follow-up prompt the user might ask next.",
-    },
-    suggestion2: {
-      type: "string",
-      description: "A second, distinct follow-up prompt.",
-    },
-    suggestion3: {
-      type: "string",
-      description: "A third, distinct follow-up prompt.",
-    },
-  },
-  required: ["title", "suggestion1", "suggestion2", "suggestion3"],
-  additionalProperties: false,
-} as const;
+export const FollowupsSchema = z.object({
+  title: z
+    .string()
+    .describe(
+      "A description of the gist of the user's prompt, six words maximum. Not a truncation of the prompt text.",
+    ),
+  suggestion1: z
+    .string()
+    .describe("A concrete follow-up prompt the user might ask next."),
+  suggestion2: z.string().describe("A second, distinct follow-up prompt."),
+  suggestion3: z.string().describe("A third, distinct follow-up prompt."),
+});
 
 export function followupsPrompt(prompt: string, response: string): string {
   const clippedResponse =
@@ -50,23 +45,27 @@ export function followupsPrompt(prompt: string, response: string): string {
   ].join("\n");
 }
 
-export type RawFollowups = {
-  title: string;
-  suggestion1: string;
-  suggestion2: string;
-  suggestion3: string;
-};
+export type RawFollowups = z.infer<typeof FollowupsSchema>;
 
-export function toStructured(raw: RawFollowups): {
+/**
+ * Normalise the model's four flat strings into the shape the app stores.
+ * `parsed` is null when the SDK had no structured payload to decode (an empty
+ * body, or the whole output budget spent on reasoning tokens) — surface that
+ * as a clear error rather than dereferencing null.
+ */
+export function toStructured(parsed: RawFollowups | null): {
   title: string;
   suggestions: [string, string, string];
 } {
+  if (!parsed) {
+    throw new Error("The model returned no structured follow-ups payload");
+  }
   return {
-    title: raw.title.trim(),
+    title: parsed.title.trim(),
     suggestions: [
-      raw.suggestion1.trim(),
-      raw.suggestion2.trim(),
-      raw.suggestion3.trim(),
+      parsed.suggestion1.trim(),
+      parsed.suggestion2.trim(),
+      parsed.suggestion3.trim(),
     ],
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Tldraw,
   createShapeId,
@@ -153,39 +153,49 @@ export default function Canvas() {
     if (editor) reconcile(editor, nodes, edges);
   }, [editor, nodes, edges]);
 
-  // Debounced geometry persistence back to Supabase.
-  useEffect(() => {
-    return () => {
-      if (flushTimer.current) clearTimeout(flushTimer.current);
-    };
+  // Write whatever geometry is buffered straight through, ignoring the debounce.
+  const flushGeometry = useCallback(() => {
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+    }
+    if (pendingGeometry.current.size === 0) return;
+
+    const batch = new Map(pendingGeometry.current);
+    pendingGeometry.current.clear();
+    const supabase = createClient();
+    const graph = useGraphStore.getState();
+    for (const [nodeId, geometry] of batch) {
+      graph.updateNodeGeometry(nodeId, geometry);
+      // Supabase builders are lazy — .then() is what fires the request.
+      supabase
+        .from("nodes")
+        .update({
+          canvas_x: geometry.x,
+          canvas_y: geometry.y,
+          canvas_w: geometry.w,
+          canvas_h: geometry.h,
+        })
+        .eq("id", nodeId)
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to persist card position:", error.message);
+          }
+        });
+    }
   }, []);
+
+  // Switching conversations unmounts this component (ConversationView renders
+  // null for a render while the store re-inits), so a drag followed by a
+  // sidebar click inside the 600ms debounce used to be dropped on the floor:
+  // the cleanup cleared the timer without ever writing the batch. Flush first.
+  useEffect(() => {
+    return () => flushGeometry();
+  }, [flushGeometry]);
 
   function scheduleGeometryFlush() {
     if (flushTimer.current) clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(() => {
-      const batch = new Map(pendingGeometry.current);
-      pendingGeometry.current.clear();
-      const supabase = createClient();
-      const graph = useGraphStore.getState();
-      for (const [nodeId, geometry] of batch) {
-        graph.updateNodeGeometry(nodeId, geometry);
-        // Supabase builders are lazy — .then() is what fires the request.
-        supabase
-          .from("nodes")
-          .update({
-            canvas_x: geometry.x,
-            canvas_y: geometry.y,
-            canvas_w: geometry.w,
-            canvas_h: geometry.h,
-          })
-          .eq("id", nodeId)
-          .then(({ error }) => {
-            if (error) {
-              console.error("Failed to persist card position:", error.message);
-            }
-          });
-      }
-    }, 600);
+    flushTimer.current = setTimeout(flushGeometry, 600);
   }
 
   return (

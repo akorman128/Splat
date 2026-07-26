@@ -1,12 +1,8 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { MODELS } from "./models";
-import {
-  FOLLOWUPS_SCHEMA,
-  followupsPrompt,
-  toStructured,
-  type RawFollowups,
-} from "./followups";
+import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ProviderAdapter, StreamEvent } from "./types";
 
 // Sampling params (temperature) are omitted throughout: Claude 4.7+ models
@@ -86,25 +82,20 @@ export const anthropicAdapter: ProviderAdapter = {
   },
 
   async generateFollowups({ apiKey, prompt, response }) {
+    // messages.parse (not .create) so the SDK decodes and validates the
+    // payload into parsed_output. Hand-rolling it meant picking the first
+    // text block out of res.content — fragile once thinking blocks are in
+    // play — and a bare JSON.parse whose SyntaxError surfaced as an opaque 502.
     const call = async (model: string) => {
-      const res = await client(apiKey).messages.create({
+      const res = await client(apiKey).messages.parse({
         model,
         max_tokens: 1000,
-        output_config: {
-          format: {
-            type: "json_schema",
-            schema: FOLLOWUPS_SCHEMA as unknown as Record<string, unknown>,
-          },
-        },
+        output_config: { format: zodOutputFormat(FollowupsSchema) },
         messages: [
           { role: "user", content: followupsPrompt(prompt, response) },
         ],
       });
-      const text = res.content.find((b) => b.type === "text")?.text;
-      if (!text) {
-        throw new Error("Anthropic returned no text for the followups call");
-      }
-      return toStructured(JSON.parse(text) as RawFollowups);
+      return toStructured(res.parsed_output);
     };
 
     try {
