@@ -24,39 +24,57 @@ export function ProviderKeyForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // A route handler can answer with something that isn't JSON — a platform
+  // 502/504 HTML page, or the 500 thrown when APP_ENCRYPTION_KEY is missing.
+  // An unguarded res.json() rejects there, and since setBusy(false) sat after
+  // the await the form was left spinning forever with no message.
+  async function readBody(res: Response): Promise<{ error?: string }> {
+    return (await res.json().catch(() => ({}))) as { error?: string };
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/credentials", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, key }),
-    });
-    const data = await res.json();
-    setBusy(false);
-    if (!res.ok) {
-      setError(data.error ?? "Something went wrong");
-      return;
+    try {
+      const res = await fetch("/api/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, key }),
+      });
+      const data = await readBody(res);
+      if (!res.ok) {
+        setError(data.error ?? `Something went wrong (${res.status})`);
+        return;
+      }
+      setKey("");
+      toast.success(`${PROVIDER_LABELS[provider]} key verified and saved`);
+      router.refresh();
+    } catch {
+      setError("Network error — the request never reached the server.");
+    } finally {
+      setBusy(false);
     }
-    setKey("");
-    toast.success(`${PROVIDER_LABELS[provider]} key verified and saved`);
-    router.refresh();
   }
 
   async function remove() {
     setBusy(true);
-    const res = await fetch(`/api/credentials?provider=${provider}`, {
-      method: "DELETE",
-    });
-    setBusy(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      toast.error(data.error ?? "Could not remove key");
-      return;
+    try {
+      const res = await fetch(`/api/credentials?provider=${provider}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await readBody(res);
+        toast.error(data.error ?? `Could not remove key (${res.status})`);
+        return;
+      }
+      toast.success(`${PROVIDER_LABELS[provider]} key removed`);
+      router.refresh();
+    } catch {
+      toast.error("Network error — the request never reached the server.");
+    } finally {
+      setBusy(false);
     }
-    toast.success(`${PROVIDER_LABELS[provider]} key removed`);
-    router.refresh();
   }
 
   return (

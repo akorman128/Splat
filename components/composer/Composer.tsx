@@ -37,6 +37,7 @@ export function Composer({
 }) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [sending, setSending] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -72,6 +73,12 @@ export function Composer({
   }
 
   function submit() {
+    // Guard against a second submission before the first node exists. Both
+    // calls would otherwise read the same node set, so childPosition/
+    // rootPosition would hand them identical coordinates and one card would
+    // sit exactly on top of the other, invisible. Released on the "node"
+    // event rather than at end-of-stream, so branching stays responsive.
+    if (sending) return;
     const text = prompt.trim();
     if (!text || !provider) return;
 
@@ -92,6 +99,7 @@ export function Composer({
       : rootPosition(allNodes);
 
     setPrompt("");
+    setSending(true);
 
     void submitChat(
       {
@@ -105,6 +113,7 @@ export function Composer({
         canvasY: position.y,
       },
       {
+        onNode: () => setSending(false),
         onTitled: (_nodeId, isRoot) => {
           // A root card's title becomes the conversation title — refresh the
           // sidebar to pick it up.
@@ -112,6 +121,8 @@ export function Composer({
         },
       },
     ).then(({ error }) => {
+      // Also clears when the request failed before any node event arrived.
+      setSending(false);
       if (error) {
         toast.error(error);
         setPrompt((current) => (current === "" ? text : current));
@@ -211,7 +222,7 @@ export function Composer({
           size="sm"
           className="ml-auto"
           onClick={submit}
-          disabled={!prompt.trim()}
+          disabled={!prompt.trim() || sending}
         >
           <ArrowUp className="size-4" />
           Send

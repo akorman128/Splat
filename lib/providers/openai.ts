@@ -1,12 +1,8 @@
 import "server-only";
 import OpenAI from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
 import { MODELS } from "./models";
-import {
-  FOLLOWUPS_SCHEMA,
-  followupsPrompt,
-  toStructured,
-  type RawFollowups,
-} from "./followups";
+import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ProviderAdapter, StreamEvent } from "./types";
 
 // GPT-5.6-series models are served via the Responses API.
@@ -70,22 +66,19 @@ export const openaiAdapter: ProviderAdapter = {
   },
 
   async generateFollowups({ apiKey, prompt, response }) {
+    // responses.parse (not .create) so the SDK decodes and validates into
+    // output_parsed. JSON.parse(res.output_text) threw an opaque SyntaxError
+    // whenever output_text came back empty — which happens when the whole
+    // budget below goes to reasoning tokens.
     const call = async (model: string) => {
-      const res = await client(apiKey).responses.create({
+      const res = await client(apiKey).responses.parse({
         model,
         input: [{ role: "user", content: followupsPrompt(prompt, response) }],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "followups",
-            strict: true,
-            schema: FOLLOWUPS_SCHEMA as unknown as Record<string, unknown>,
-          },
-        },
+        text: { format: zodTextFormat(FollowupsSchema, "followups") },
         // Low output budget per spec — enough headroom for reasoning tokens.
         max_output_tokens: 2000,
       });
-      return toStructured(JSON.parse(res.output_text) as RawFollowups);
+      return toStructured(res.output_parsed);
     };
 
     try {

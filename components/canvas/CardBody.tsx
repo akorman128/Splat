@@ -3,12 +3,12 @@
 import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Maximize2, RotateCcw } from "lucide-react";
+import { Loader2, Maximize2 } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
-import { useStreamStore } from "@/lib/store/stream-store";
-import { retryChat } from "@/lib/chat-client";
 import { estimateTokens } from "@/lib/tokens";
 import { SuggestionRail } from "./SuggestionRail";
+import { InterruptedNotice } from "./InterruptedNotice";
+import { contextLabel, useCardState } from "./useCardState";
 
 // Renders one card's content, reading everything from application state by
 // nodeId. Interactive children stop pointer propagation so clicks don't
@@ -17,12 +17,9 @@ import { SuggestionRail } from "./SuggestionRail";
 const stop = (e: React.PointerEvent | React.WheelEvent) => e.stopPropagation();
 
 export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
-  const node = useGraphStore((s) => s.nodes[nodeId]);
-  const contextCount = useGraphStore(
-    (s) => s.edges.filter((e) => e.node_id === nodeId).length,
-  );
+  const { node, responseText, contextCount, isStreaming, isError } =
+    useCardState(nodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
-  const streaming = useStreamStore((s) => s.streams[nodeId]);
 
   if (!node) {
     return (
@@ -31,13 +28,6 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
       </div>
     );
   }
-
-  const responseText =
-    node.status === "streaming" && streaming !== undefined
-      ? streaming
-      : node.response;
-  const isStreaming = node.status === "streaming";
-  const isError = node.status === "error";
 
   return (
     <div className="relative h-full w-full">
@@ -89,20 +79,11 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           ) : null}
 
           {isError && (
-            <div className="mt-2 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2">
-              <p className="text-xs text-destructive">
-                Generation was interrupted
-                {node.error_message ? `: ${node.error_message}` : "."}
-              </p>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent"
-                onPointerDown={stop}
-                onClick={() => void retryChat(nodeId)}
-              >
-                <RotateCcw className="size-3" /> Retry
-              </button>
-            </div>
+            <InterruptedNotice
+              nodeId={nodeId}
+              errorMessage={node.error_message}
+              compact
+            />
           )}
         </div>
 
@@ -116,11 +97,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
               : `~${estimateTokens(node.prompt + responseText)} tok`}
           </span>
           <span>·</span>
-          <span>
-            {contextCount === 0
-              ? "no context"
-              : `${contextCount} card${contextCount === 1 ? "" : "s"} in context`}
-          </span>
+          <span>{contextLabel(contextCount)}</span>
           <span className="ml-auto">
             {new Date(node.created_at).toLocaleTimeString([], {
               hour: "2-digit",

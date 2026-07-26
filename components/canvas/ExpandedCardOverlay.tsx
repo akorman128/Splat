@@ -2,7 +2,6 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { RotateCcw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,10 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { useGraphStore } from "@/lib/store/graph-store";
-import { useStreamStore } from "@/lib/store/stream-store";
-import { retryChat } from "@/lib/chat-client";
+import { InterruptedNotice } from "./InterruptedNotice";
+import { contextLabel, useCardState } from "./useCardState";
 
 // Expanded card view: an overlay layered above the canvas, NOT a resized
 // tldraw shape. The canvas stays mounted underneath, so closing (Esc or X)
@@ -22,24 +20,10 @@ import { retryChat } from "@/lib/chat-client";
 export function ExpandedCardOverlay() {
   const expandedNodeId = useGraphStore((s) => s.expandedNodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
-  const node = useGraphStore((s) =>
-    s.expandedNodeId ? s.nodes[s.expandedNodeId] : undefined,
-  );
-  const contextCount = useGraphStore((s) =>
-    s.expandedNodeId
-      ? s.edges.filter((e) => e.node_id === s.expandedNodeId).length
-      : 0,
-  );
-  const streaming = useStreamStore((s) =>
-    expandedNodeId ? s.streams[expandedNodeId] : undefined,
-  );
+  const { node, responseText, contextCount, isError } =
+    useCardState(expandedNodeId);
 
   if (!node) return null;
-
-  const responseText =
-    node.status === "streaming" && streaming !== undefined
-      ? streaming
-      : node.response;
 
   return (
     <Dialog
@@ -63,20 +47,11 @@ export function ExpandedCardOverlay() {
               </ReactMarkdown>
             </div>
           )}
-          {node.status === "error" && (
-            <div className="mt-4 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
-              <p className="text-sm text-destructive">
-                Generation was interrupted
-                {node.error_message ? `: ${node.error_message}` : "."}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void retryChat(node.id)}
-              >
-                <RotateCcw className="size-3.5" /> Retry
-              </Button>
-            </div>
+          {isError && (
+            <InterruptedNotice
+              nodeId={node.id}
+              errorMessage={node.error_message}
+            />
           )}
         </div>
         <div className="flex items-center gap-2 border-t px-6 py-2 text-xs text-muted-foreground">
@@ -88,11 +63,7 @@ export function ExpandedCardOverlay() {
               : "token counts pending"}
           </span>
           <span>·</span>
-          <span>
-            {contextCount === 0
-              ? "no context"
-              : `${contextCount} card${contextCount === 1 ? "" : "s"} in context`}
-          </span>
+          <span>{contextLabel(contextCount)}</span>
           <span className="ml-auto">
             {new Date(node.created_at).toLocaleString()}
           </span>

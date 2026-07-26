@@ -3,7 +3,7 @@
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useStreamStore } from "@/lib/store/stream-store";
 import type { Provider } from "@/lib/providers/models";
-import type { ChatStreamEvent, SuggestionRow } from "@/lib/types";
+import type { ChatStreamEvent, NodeRow, SuggestionRow } from "@/lib/types";
 
 // Client half of the streaming path. POSTs to /api/chat, parses the NDJSON
 // stream, and routes events into the graph/stream stores. The only path from
@@ -21,6 +21,13 @@ export type SubmitParams = {
 };
 
 type RunCallbacks = {
+  /**
+   * Fired as soon as the server has created (or reset) the node row, well
+   * before the stream finishes. Callers use this to release a submit lock:
+   * once the node is in the graph store, auto-layout counts it as a sibling
+   * and the next prompt no longer lands on top of it.
+   */
+  onNode?: (node: NodeRow) => void;
   /** Fired after a node completes and its title/suggestions round-trip lands. */
   onTitled?: (nodeId: string, isRoot: boolean) => void;
 };
@@ -76,6 +83,7 @@ async function runStream(
         streams.clear(event.node.id);
         graph.upsertNode(event.node);
         graph.addEdges(event.edges);
+        callbacks.onNode?.(event.node);
         break;
       case "delta":
         if (nodeId) streams.append(nodeId, event.text);

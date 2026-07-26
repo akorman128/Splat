@@ -1,19 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
-import { ProviderKeyForm } from "@/components/settings/ProviderKeyForm";
+import {
+  ProviderKeyList,
+  hasAnyProviderKey,
+} from "@/components/settings/ProviderKeyList";
 import { OnboardingActions } from "./OnboardingActions";
-import { PROVIDERS } from "@/lib/providers/models";
 
 // One-time onboarding step after sign-in: connect an OpenAI and/or Anthropic
 // key. Skippable — the composer renders a disabled state until a key exists.
 export default async function OnboardingPage() {
-  const supabase = await createClient();
-  const { data: creds } = await supabase
-    .from("provider_creds")
-    .select("provider, key_last4");
-
-  const byProvider = new Map(
-    (creds ?? []).map((c) => [c.provider, c.key_last4]),
-  );
+  const hasKey = await hasAnyProviderKey();
 
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-12">
@@ -27,14 +21,8 @@ export default async function OnboardingPage() {
             OpenAI or Anthropic account. Add at least one key to start.
           </p>
         </div>
-        {PROVIDERS.map((p) => (
-          <ProviderKeyForm
-            key={p}
-            provider={p}
-            connectedLast4={byProvider.get(p) ?? null}
-          />
-        ))}
-        <OnboardingActions hasAnyKey={byProvider.size > 0} />
+        <ProviderKeyList />
+        <OnboardingActions hasAnyKey={hasKey} />
       </div>
     </div>
   );

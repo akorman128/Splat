@@ -11,6 +11,13 @@ type GraphState = {
   conversationId: string | null;
   nodes: Record<string, NodeRow>;
   edges: ContextEdgeRow[];
+  /**
+   * How many context sources each node consumes, derived from `edges` and kept
+   * in step with it. Cards render this in their footer, so deriving it with a
+   * `s.edges.filter(...)` selector meant every mounted card rescanned the whole
+   * edge list on every store write — O(cards x edges) per streamed node event.
+   */
+  contextCounts: Record<string, number>;
   suggestions: Record<string, SuggestionRow[]>;
   selectedNodeId: string | null;
   expandedNodeId: string | null;
@@ -33,10 +40,19 @@ type GraphState = {
   ): void;
 };
 
+function countByConsumer(edges: ContextEdgeRow[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const e of edges) {
+    counts[e.node_id] = (counts[e.node_id] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export const useGraphStore = create<GraphState>((set) => ({
   conversationId: null,
   nodes: {},
   edges: [],
+  contextCounts: {},
   suggestions: {},
   selectedNodeId: null,
   expandedNodeId: null,
@@ -53,6 +69,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       conversationId,
       nodes: Object.fromEntries(nodes.map((n) => [n.id, n])),
       edges,
+      contextCounts: countByConsumer(edges),
       suggestions: suggestionMap,
       selectedNodeId: null,
       expandedNodeId: null,
@@ -71,7 +88,11 @@ export const useGraphStore = create<GraphState>((set) => ({
       const known = new Set(state.edges.map((e) => e.id));
       const fresh = edges.filter((e) => !known.has(e.id));
       if (fresh.length === 0) return state;
-      return { edges: [...state.edges, ...fresh] };
+      const contextCounts = { ...state.contextCounts };
+      for (const e of fresh) {
+        contextCounts[e.node_id] = (contextCounts[e.node_id] ?? 0) + 1;
+      }
+      return { edges: [...state.edges, ...fresh], contextCounts };
     });
   },
 
