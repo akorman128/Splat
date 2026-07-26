@@ -1,0 +1,107 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  PROVIDER_LABELS,
+  type Provider,
+} from "@/lib/providers/models";
+import { CheckCircle2, Loader2 } from "lucide-react";
+
+export function ProviderKeyForm({
+  provider,
+  connectedLast4,
+}: {
+  provider: Provider;
+  connectedLast4: string | null;
+}) {
+  const router = useRouter();
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, key }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(data.error ?? "Something went wrong");
+      return;
+    }
+    setKey("");
+    toast.success(`${PROVIDER_LABELS[provider]} key verified and saved`);
+    router.refresh();
+  }
+
+  async function remove() {
+    setBusy(true);
+    const res = await fetch(`/api/credentials?provider=${provider}`, {
+      method: "DELETE",
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error ?? "Could not remove key");
+      return;
+    }
+    toast.success(`${PROVIDER_LABELS[provider]} key removed`);
+    router.refresh();
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-3 rounded-lg border p-4">
+      <div className="flex items-center justify-between">
+        <Label htmlFor={`key-${provider}`} className="text-base">
+          {PROVIDER_LABELS[provider]}
+        </Label>
+        {connectedLast4 && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <CheckCircle2 className="size-3.5 text-green-600" />
+            Connected · ····{connectedLast4}
+          </span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          id={`key-${provider}`}
+          type="password"
+          placeholder={
+            connectedLast4 ? "Paste a new key to replace" : "Paste your API key"
+          }
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          autoComplete="off"
+        />
+        <Button type="submit" disabled={busy || key.trim().length === 0}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+        </Button>
+        {connectedLast4 && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={remove}
+          >
+            Remove
+          </Button>
+        )}
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <p className="text-xs text-muted-foreground">
+        Verified against the provider, encrypted at rest, and only ever
+        decrypted inside server route handlers.
+      </p>
+    </form>
+  );
+}

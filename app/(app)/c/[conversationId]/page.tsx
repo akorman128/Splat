@@ -1,0 +1,51 @@
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { ConversationView } from "@/components/canvas/ConversationView";
+import type { CredentialSummary } from "@/lib/types";
+import type { Provider } from "@/lib/providers/models";
+
+export default async function ConversationPage({
+  params,
+}: {
+  params: Promise<{ conversationId: string }>;
+}) {
+  const { conversationId } = await params;
+  const supabase = await createClient();
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conversation) notFound();
+
+  const [{ data: nodes }, { data: credentials }] = await Promise.all([
+    supabase
+      .from("nodes")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at"),
+    supabase.from("provider_creds").select("provider, key_last4"),
+  ]);
+
+  const nodeIds = (nodes ?? []).map((n) => n.id);
+  const [{ data: edges }, { data: suggestions }] = nodeIds.length
+    ? await Promise.all([
+        supabase.from("context_edges").select("*").in("node_id", nodeIds),
+        supabase.from("suggestions").select("*").in("node_id", nodeIds),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  return (
+    <ConversationView
+      conversationId={conversationId}
+      nodes={nodes ?? []}
+      edges={edges ?? []}
+      suggestions={suggestions ?? []}
+      credentials={(credentials ?? []).map((c) => ({
+        provider: c.provider as Provider,
+        key_last4: c.key_last4,
+      })) satisfies CredentialSummary[]}
+    />
+  );
+}
