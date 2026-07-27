@@ -23,9 +23,11 @@ function ownsArrowKeys(target: EventTarget | null): boolean {
 export function useKeyboardShortcuts({
   shortcutsOpen,
   setShortcutsOpen,
+  toggleComposer,
 }: {
   shortcutsOpen: boolean;
   setShortcutsOpen(open: boolean): void;
+  toggleComposer(): void;
 }) {
   useEffect(() => {
     function handle(event: KeyboardEvent) {
@@ -42,6 +44,11 @@ export function useKeyboardShortcuts({
         if (key === "/") {
           claim();
           setShortcutsOpen(!shortcutsOpen);
+          return;
+        }
+        if (key === "h") {
+          claim();
+          toggleComposer();
           return;
         }
         if (key !== "o" && key !== "r") return;
@@ -89,5 +96,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handle, { capture: true });
     return () => window.removeEventListener("keydown", handle, { capture: true });
-  }, [shortcutsOpen, setShortcutsOpen]);
+  }, [shortcutsOpen, setShortcutsOpen, toggleComposer]);
 }
