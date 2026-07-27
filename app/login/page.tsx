@@ -64,7 +64,7 @@ export default function LoginPage() {
       <main className="flex min-h-dvh items-center justify-center px-6">
         <div className="w-full max-w-sm space-y-4 text-center">
           <Link href="/" className="text-2xl font-semibold tracking-tight">
-            Splat
+            🫟 Splat
           </Link>
           <h1 className="text-lg font-medium">Check your email</h1>
           <p className="text-sm text-muted-foreground">
@@ -95,7 +95,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1 text-center">
           <Link href="/" className="text-2xl font-semibold tracking-tight">
-            Splat
+            🫟 Splat
           </Link>
           <p className="text-sm text-muted-foreground">
             {mode === "signin"
