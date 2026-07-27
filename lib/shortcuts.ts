@@ -28,6 +28,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["Enter"], label: "Send the prompt" },
       { keys: ["Shift", "Enter"], label: "Start a new line" },
       { keys: ["Esc"], label: "Cancel a staged regeneration" },
+      { keys: [MOD, "H"], label: "Hide or show the prompt box" },
     ],
   },
   {

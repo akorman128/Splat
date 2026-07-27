@@ -109,7 +109,7 @@ export function AppSidebar({
     <Sidebar collapsible="offcanvas">
       <SidebarHeader>
         <div className="flex items-center justify-between px-2 pt-1">
-          <span className="text-lg font-semibold tracking-tight">Splat</span>
+          <span className="text-lg font-semibold tracking-tight">🫟 Splat</span>
         </div>
         <Button
           size="lg"

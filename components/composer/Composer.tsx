@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowUp, GitBranch, RefreshCw, X } from "lucide-react";
+import { ArrowUp, ChevronDown, GitBranch, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
 import { useGraphStore } from "@/lib/store/graph-store";
@@ -29,6 +30,7 @@ import {
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
+import { modifierLabel } from "@/lib/shortcuts";
 import type { CredentialSummary } from "@/lib/types";
 
 function providerLabel(provider: Provider): string {
@@ -40,9 +42,11 @@ function providerLabel(provider: Provider): string {
 export function Composer({
   credentials,
   centered = false,
+  onHide,
 }: {
   credentials: CredentialSummary[];
   centered?: boolean;
+  onHide?: () => void;
 }) {
   const router = useRouter();
   const chat = useChatStream();
@@ -249,7 +253,20 @@ export function Composer({
   }
 
   return (
-    <div className="space-y-2 rounded-xl border bg-card p-3 shadow-lg">
+    <div className="relative space-y-2 rounded-xl border bg-card p-3 shadow-lg">
+      {onHide && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          title={`Hide the prompt box (${modifierLabel()}H)`}
+          onClick={onHide}
+          className="absolute top-1.5 right-1.5 text-muted-foreground"
+        >
+          <ChevronDown />
+          <span className="sr-only">Hide the prompt box</span>
+        </Button>
+      )}
+
       {centered && (
         <p className="px-1 text-center text-sm text-muted-foreground">
           Ask anything — your first card lands on the canvas.
@@ -257,7 +274,12 @@ export function Composer({
       )}
 
       {regenerateTarget ? (
-        <div className="flex items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-[11px] text-muted-foreground">
+        <div
+          className={cn(
+            "flex items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-[11px] text-muted-foreground",
+            onHide && "pr-7",
+          )}
+        >
           <RefreshCw className="size-3 shrink-0 text-primary" />
           Regenerating
           <span className="max-w-40 truncate font-medium text-foreground">
@@ -292,7 +314,12 @@ export function Composer({
         </>
       ) : (
         !centered && (
-          <p className="px-1 text-[11px] text-muted-foreground">
+          <p
+            className={cn(
+              "px-1 text-[11px] text-muted-foreground",
+              onHide && "pr-7",
+            )}
+          >
             No card selected — this prompt starts a new root. Select a card to
             branch from it.
           </p>

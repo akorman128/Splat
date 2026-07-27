@@ -1,4 +1,4 @@
-# Splat — a graph-native AI chat canvas
+# 🫟 Splat — a graph-native AI chat canvas
 
 Instead of one linear transcript, every prompt/response pair is a **card** on an
 infinite [tldraw](https://tldraw.dev) canvas. Cards are linked as a DAG, and you
