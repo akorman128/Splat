@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
-import { submitSuggestion } from "@/lib/chat-actions";
+import { useSubmitSuggestion } from "@/lib/chat-actions";
 import type { SuggestionRow } from "@/lib/types";
 
 // Three clickable suggestion chips to the right of a card. Suggestions are
@@ -34,21 +33,20 @@ export function SuggestionRail({ nodeId }: { nodeId: string }) {
 }
 
 function Chip({ suggestion }: { suggestion: SuggestionRow }) {
-  const [busy, setBusy] = useState(false);
+  const submit = useSubmitSuggestion();
   const taken = suggestion.taken_at !== null;
 
-  async function click() {
-    if (taken || busy) return;
-    setBusy(true);
-    const { error } = await submitSuggestion(suggestion);
-    setBusy(false);
-    if (error) toast.error(error);
+  function click() {
+    if (taken || submit.isPending) return;
+    submit.mutate(suggestion, {
+      onError: (error) => toast.error(error.message),
+    });
   }
 
   return (
     <button
       type="button"
-      disabled={busy}
+      disabled={submit.isPending}
       onPointerDown={stop}
       onClick={click}
       className={`flex items-start gap-1.5 rounded-full border px-3 py-1.5 text-left text-xs shadow-sm transition-colors ${

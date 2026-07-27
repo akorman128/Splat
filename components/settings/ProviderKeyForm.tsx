@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiFetch, postJson } from "@/lib/query/api";
 import {
   PROVIDER_KEY_URLS,
   PROVIDER_LABELS,
@@ -22,64 +24,44 @@ export function ProviderKeyForm({
 }) {
   const router = useRouter();
   const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // A route handler can answer with something that isn't JSON — a platform
-  // 502/504 HTML page, or the 500 thrown when APP_ENCRYPTION_KEY is missing.
-  // An unguarded res.json() rejects there, and since setBusy(false) sat after
-  // the await the form was left spinning forever with no message.
-  async function readBody(res: Response): Promise<{ error?: string }> {
-    return (await res.json().catch(() => ({}))) as { error?: string };
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/credentials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, key }),
-      });
-      const data = await readBody(res);
-      if (!res.ok) {
-        setError(data.error ?? `Something went wrong (${res.status})`);
-        return;
-      }
+  // The connected keys are read on the server by ProviderKeyList, so a write
+  // is published by re-rendering that tree rather than by invalidating a
+  // client cache.
+  const save = useMutation({
+    mutationFn: (apiKey: string) =>
+      apiFetch("/api/credentials", postJson({ provider, key: apiKey })),
+    onSuccess: () => {
       setKey("");
       toast.success(`${PROVIDER_LABELS[provider]} key verified and saved`);
       router.refresh();
-    } catch {
-      setError("Network error — the request never reached the server.");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+  });
 
-  async function remove() {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/credentials?provider=${provider}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const data = await readBody(res);
-        toast.error(data.error ?? `Could not remove key (${res.status})`);
-        return;
-      }
+  const remove = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/credentials?provider=${provider}`, { method: "DELETE" }),
+    onSuccess: () => {
+      // A failed save leaves its message under the form until the next save.
+      // Removing the key answers that message, so clear it rather than let it
+      // sit there contradicting the toast.
+      save.reset();
       toast.success(`${PROVIDER_LABELS[provider]} key removed`);
       router.refresh();
-    } catch {
-      toast.error("Network error — the request never reached the server.");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const busy = save.isPending || remove.isPending;
 
   return (
-    <form onSubmit={save} className="space-y-3 rounded-lg border p-4">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate(key);
+      }}
+      className="space-y-3 rounded-lg border p-4"
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Label htmlFor={`key-${provider}`} className="text-base">
@@ -122,13 +104,15 @@ export function ProviderKeyForm({
             type="button"
             variant="outline"
             disabled={busy}
-            onClick={remove}
+            onClick={() => remove.mutate()}
           >
             Remove
           </Button>
         )}
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {save.error && (
+        <p className="text-sm text-destructive">{save.error.message}</p>
+      )}
       <p className="text-xs text-muted-foreground">
         Verified against the provider, encrypted at rest, and only ever
         decrypted inside server route handlers.

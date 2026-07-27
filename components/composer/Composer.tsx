@@ -18,7 +18,7 @@ import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
-import { submitChat } from "@/lib/chat-client";
+import { useChatStream } from "@/lib/chat-client";
 import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition, rootPosition } from "@/lib/layout";
 import {
@@ -50,6 +50,7 @@ export function Composer({
   centered?: boolean;
 }) {
   const router = useRouter();
+  const chat = useChatStream();
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -117,33 +118,35 @@ export function Composer({
     setPrompt("");
     setSending(true);
 
-    void submitChat(
-      {
-        conversationId: graph.conversationId,
-        parentId: parentNode?.id ?? null,
-        contextNodeIds,
-        prompt: text,
-        provider,
-        model: model ?? defaultModel(provider),
-        canvasX: position.x,
-        canvasY: position.y,
-      },
-      {
+    // mutateAsync rather than mutate: branching lets a second prompt start
+    // while the first is still streaming, and the shared mutation observer
+    // only ever tracks the most recent call. The returned promise is per-call,
+    // so an earlier stream still reports its own outcome.
+    chat
+      .mutateAsync({
+        request: {
+          conversationId: graph.conversationId,
+          parentId: parentNode?.id ?? null,
+          contextNodeIds,
+          prompt: text,
+          provider,
+          model: model ?? defaultModel(provider),
+          canvasX: position.x,
+          canvasY: position.y,
+        },
         onNode: () => setSending(false),
         onTitled: (_nodeId, isRoot) => {
           // A root card's title becomes the conversation title — refresh the
           // sidebar to pick it up.
           if (isRoot) router.refresh();
         },
-      },
-    ).then(({ error }) => {
-      // Also clears when the request failed before any node event arrived.
-      setSending(false);
-      if (error) {
-        toast.error(error);
+      })
+      .catch((error: Error) => {
+        toast.error(error.message);
         setPrompt((current) => (current === "" ? text : current));
-      }
-    });
+      })
+      // Also clears when the request failed before any node event arrived.
+      .finally(() => setSending(false));
   }
 
   if (!hasKey) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import {
   Tldraw,
@@ -22,6 +23,8 @@ import type { ContextEdgeRow, NodeRow } from "@/lib/types";
 // unreachable because hideUi disables tools and their keyboard shortcuts.
 
 const shapeUtils = [CardShapeUtil];
+
+type Geometry = { x: number; y: number; w: number; h: number };
 
 const cardShapeId = (nodeId: string): TLShapeId => createShapeId(`card-${nodeId}`);
 const parentArrowId = (childId: string): TLShapeId =>
@@ -156,14 +159,39 @@ export default function Canvas() {
       ? "dark"
       : "light",
   );
-  const pendingGeometry = useRef(
-    new Map<string, { x: number; y: number; w: number; h: number }>(),
-  );
+  const pendingGeometry = useRef(new Map<string, Geometry>());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (editor) reconcile(editor, nodes, edges);
   }, [editor, nodes, edges]);
+
+  // One row update per moved card. The failure is reported from inside the
+  // mutation function rather than an `onError` handler because the flush below
+  // also runs on unmount, and by then the observer that would dispatch those
+  // callbacks is gone — the request itself still goes out.
+  const { mutate: persistGeometry } = useMutation({
+    mutationFn: async ({
+      nodeId,
+      geometry,
+    }: {
+      nodeId: string;
+      geometry: Geometry;
+    }) => {
+      const { error } = await createClient()
+        .from("nodes")
+        .update({
+          canvas_x: geometry.x,
+          canvas_y: geometry.y,
+          canvas_w: geometry.w,
+          canvas_h: geometry.h,
+        })
+        .eq("id", nodeId);
+      if (error) {
+        console.error("Failed to persist card position:", error.message);
+      }
+    },
+  });
 
   // Write whatever geometry is buffered straight through, ignoring the debounce.
   const flushGeometry = useCallback(() => {
@@ -175,27 +203,12 @@ export default function Canvas() {
 
     const batch = new Map(pendingGeometry.current);
     pendingGeometry.current.clear();
-    const supabase = createClient();
     const graph = useGraphStore.getState();
     for (const [nodeId, geometry] of batch) {
       graph.updateNodeGeometry(nodeId, geometry);
-      // Supabase builders are lazy — .then() is what fires the request.
-      supabase
-        .from("nodes")
-        .update({
-          canvas_x: geometry.x,
-          canvas_y: geometry.y,
-          canvas_w: geometry.w,
-          canvas_h: geometry.h,
-        })
-        .eq("id", nodeId)
-        .then(({ error }) => {
-          if (error) {
-            console.error("Failed to persist card position:", error.message);
-          }
-        });
+      persistGeometry({ nodeId, geometry });
     }
-  }, []);
+  }, [persistGeometry]);
 
   // Same buffer, but for a page that is going away. The requests flushGeometry
   // fires are ordinary fetches, and the browser cancels those the moment the
