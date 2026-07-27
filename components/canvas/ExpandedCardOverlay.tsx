@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -22,6 +23,16 @@ export function ExpandedCardOverlay() {
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
   const { node, responseText, contextCount, isError } =
     useCardState(expandedNodeId);
+
+  // The Dialog's onOpenChange is the only thing that clears expandedNodeId, so
+  // returning null while the id is still set left the app wedged: Esc and the
+  // ✕ button did not exist, and clicking Expand on that card was a no-op
+  // because setExpandedNode would write the id the store already held. If the
+  // node has left the store (conversation switch, re-init), drop the id.
+  const expandedNodeMissing = expandedNodeId !== null && !node;
+  useEffect(() => {
+    if (expandedNodeMissing) setExpandedNode(null);
+  }, [expandedNodeMissing, setExpandedNode]);
 
   if (!node) return null;
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import {
   Tldraw,
   createShapeId,
@@ -142,8 +143,19 @@ function reconcile(
 
 export default function Canvas() {
   const [editor, setEditor] = useState<Editor | null>(null);
+  const { resolvedTheme } = useTheme();
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
+  // resolvedTheme is undefined until next-themes has run on the client, which
+  // is after the editor is built — so read the class its pre-hydration script
+  // already put on <html> instead, or a dark-mode user gets a white canvas
+  // for a frame on every conversation load.
+  const [initialColorScheme] = useState<"dark" | "light">(() =>
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light",
+  );
   const pendingGeometry = useRef(
     new Map<string, { x: number; y: number; w: number; h: number }>(),
   );
@@ -185,6 +197,42 @@ export default function Canvas() {
     }
   }, []);
 
+  // Same buffer, but for a page that is going away. The requests flushGeometry
+  // fires are ordinary fetches, and the browser cancels those the moment the
+  // document unloads — so a drag followed by a reload inside the debounce
+  // window still lost the position even with the unmount flush below.
+  // sendBeacon is the transport that outlives the page; /api/geometry exists
+  // to receive it.
+  const beaconGeometry = useCallback(() => {
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+    }
+    if (pendingGeometry.current.size === 0) return;
+
+    const updates = [...pendingGeometry.current].map(([id, g]) => ({
+      id,
+      ...g,
+    }));
+    pendingGeometry.current.clear();
+
+    // Keep the store in step in case the page is restored from bfcache rather
+    // than actually torn down.
+    const graph = useGraphStore.getState();
+    for (const { id, ...geometry } of updates) {
+      graph.updateNodeGeometry(id, geometry);
+    }
+
+    const payload = new Blob([JSON.stringify({ updates })], {
+      type: "application/json",
+    });
+    if (!navigator.sendBeacon("/api/geometry", payload)) {
+      // Queue full or the payload was rejected — nothing better to try at
+      // this point in the page's life, but say so rather than fail silently.
+      console.error("Failed to queue card positions before unload");
+    }
+  }, []);
+
   // Switching conversations unmounts this component (ConversationView renders
   // null for a render while the store re-inits), so a drag followed by a
   // sidebar click inside the 600ms debounce used to be dropped on the floor:
@@ -193,15 +241,47 @@ export default function Canvas() {
     return () => flushGeometry();
   }, [flushGeometry]);
 
+  // pagehide covers reload, navigation and tab close, and unlike beforeunload
+  // it does not disqualify the page from bfcache. visibilitychange is the one
+  // that actually fires on mobile, where a backgrounded tab can be discarded
+  // without ever reaching pagehide.
+  useEffect(() => {
+    const onHide = () => beaconGeometry();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") beaconGeometry();
+    };
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [beaconGeometry]);
+
   function scheduleGeometryFlush() {
     if (flushTimer.current) clearTimeout(flushTimer.current);
     flushTimer.current = setTimeout(flushGeometry, 600);
   }
 
+  // Keep the canvas chrome in step with the app's theme. This has to be a
+  // preference update rather than the colorScheme prop, because tldraw treats
+  // that prop as construction-time config.
+  useEffect(() => {
+    if (!editor || !resolvedTheme) return;
+    editor.user.updateUserPreferences({
+      colorScheme: resolvedTheme === "dark" ? "dark" : "light",
+    });
+  }, [editor, resolvedTheme]);
+
   return (
     <div className="absolute inset-0">
       <Tldraw
         hideUi
+        // Initial value only, and deliberately a constant: tldraw rebuilds the
+        // entire editor when this prop changes, which would drop the camera
+        // and re-run reconcile on every theme flip. Live changes go through
+        // updateUserPreferences in the effect above.
+        colorScheme={initialColorScheme}
         shapeUtils={shapeUtils}
         onMount={(mountedEditor) => {
           mountedEditor.setCurrentTool("select");

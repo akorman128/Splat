@@ -71,8 +71,11 @@ npm run dev     # http://localhost:3000
 | OpenAI | `gpt-5.6-sol` | `gpt-5.6-luna` |
 | Anthropic | `claude-opus-5` | `claude-haiku-4-5` |
 
-The conversation model is user-selected in the composer and streamed. The
-utility model handles the structured "title + exactly 3 suggestions" call
+The composer's dropdown selects the **provider**, not the model: each provider
+has exactly one conversation model, pinned above, and `/api/chat` rejects any
+other id. That response is streamed.
+
+The utility model handles the structured "title + exactly 3 suggestions" call
 (strict JSON schema, low output budget). If a utility model is unavailable on
 an account, the adapter falls back one tier up (the conversation model) and
 logs it.

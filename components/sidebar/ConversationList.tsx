@@ -22,8 +22,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ThemeMenu } from "@/components/theme-menu";
 import {
   ChevronsUpDown,
   LogOut,
@@ -129,6 +131,8 @@ export function AppSidebar({
                   <Settings className="size-4" />
                   Settings
                 </DropdownMenuItem>
+                <ThemeMenu />
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={signOut}>
                   <LogOut className="size-4" />
                   Sign out

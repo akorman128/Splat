@@ -118,18 +118,31 @@ export async function POST(request: Request) {
     }
     node = reset;
   } else {
-    const { conversationId, parentId, contextNodeIds, prompt, provider, model } =
-      body;
+    const {
+      conversationId,
+      parentId,
+      contextNodeIds: rawContextNodeIds,
+      prompt,
+      provider,
+      model,
+    } = body;
     if (
       !conversationId ||
       !prompt?.trim() ||
       !provider ||
       !isProvider(provider) ||
       !model ||
-      !Array.isArray(contextNodeIds)
+      !Array.isArray(rawContextNodeIds)
     ) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
+    // Deduplicate before anything downstream sees the list. Membership was
+    // checked but repeats were not, and topoOrder preserves duplicates for
+    // independent nodes — so [X, X] survived all the way to the context_edges
+    // insert, where it tripped `unique (node_id, source_node_id)`. By then the
+    // node row existed, so the failure path created a card, deleted it again,
+    // and handed the caller a raw Postgres "duplicate key value" string.
+    const contextNodeIds = [...new Set(rawContextNodeIds)];
     if (model !== MODELS[provider].conversation) {
       return NextResponse.json(
         { error: `Unknown model for ${provider}` },
