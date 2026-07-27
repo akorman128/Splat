@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useGraphStore } from "@/lib/store/graph-store";
+import { useComposerStore } from "@/lib/store/composer-store";
 import { Composer } from "@/components/composer/Composer";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import type {
@@ -12,7 +13,6 @@ import type {
   SuggestionRow,
 } from "@/lib/types";
 
-// tldraw touches window at import time — client-only.
 const Canvas = dynamic(() => import("./Canvas"), { ssr: false });
 
 export function ConversationView({
@@ -35,9 +35,7 @@ export function ConversationView({
     useGraphStore
       .getState()
       .init({ conversationId, nodes, edges, suggestions });
-    // Re-init only when switching conversations; while it's open, the client
-    // stores are the live copy (streaming, new nodes) and server re-renders
-    // must not clobber them.
+    useComposerStore.getState().setRegenerateNode(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
@@ -55,7 +53,6 @@ export function ConversationView({
           </div>
         </>
       ) : (
-        // Empty conversation: a centered composer — nothing else.
         <div className="flex h-full items-center justify-center p-6">
           <div className="w-full max-w-xl">
             <Composer credentials={credentials} centered />

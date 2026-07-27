@@ -14,10 +14,6 @@ import { topoOrder } from "@/lib/graph/topo-order";
 import type { ChatMessage } from "@/lib/providers/types";
 import type { ContextEdgeRow, NodeRow } from "@/lib/types";
 
-// Streamed chat completion. All LLM calls originate here (and in
-// /api/suggestions) — provider SDKs and keys never reach the client.
-// Responds with NDJSON: {type:"node"} → {type:"delta"}* → {type:"done"|"error"}.
-
 export const maxDuration = 300;
 
 type NewChatBody = {
@@ -33,10 +29,15 @@ type NewChatBody = {
 
 type RetryBody = { retryNodeId: string };
 
+type RegenerateBody = {
+  regenerateNodeId: string;
+  prompt?: string;
+  provider?: string;
+  model?: string;
+};
+
 export async function POST(request: Request) {
   const supabase = await createClient();
-  // getUser() rather than a local claims check: this spends the caller's
-  // provider key, so a revoked or signed-out token must not still authorise it.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let body: Partial<NewChatBody & RetryBody>;
+  let body: Partial<NewChatBody & RetryBody & RegenerateBody>;
   try {
     body = await request.json();
   } catch {
@@ -57,30 +58,63 @@ export async function POST(request: Request) {
   let conversationNodes: NodeRow[];
   let conversationEdges: ContextEdgeRow[];
 
-  if (body.retryNodeId) {
-    // Retry: fresh attempt on an existing errored node. Same prompt, same
-    // stored context set — no resuming or splicing onto truncated text.
+  const rerunNodeId = body.retryNodeId ?? body.regenerateNodeId;
+
+  if (rerunNodeId) {
+    const regenerating = !body.retryNodeId;
     const { data: existing } = await supabase
       .from("nodes")
       .select("*")
-      .eq("id", body.retryNodeId)
+      .eq("id", rerunNodeId)
       .maybeSingle();
     if (!existing) {
       return NextResponse.json({ error: "Node not found" }, { status: 404 });
     }
-    // Retry is only ever offered on an errored card, and it destroys whatever
-    // response is there. Accepting a "complete" node would wipe a good answer
-    // (retry never splices) and re-bill the user's key, so require "error".
-    if (existing.status !== "error") {
+    const rerunnable = regenerating ? ["complete", "error"] : ["error"];
+    if (!rerunnable.includes(existing.status)) {
       return NextResponse.json(
         {
           error:
             existing.status === "streaming"
               ? "Node is already streaming"
-              : `Only a card that errored can be retried (this one is ${existing.status})`,
+              : regenerating
+                ? `A card can only be regenerated once it has finished (this one is ${existing.status})`
+                : `Only a card that errored can be retried (this one is ${existing.status})`,
         },
         { status: 409 },
       );
+    }
+
+    let rerunFields: {
+      prompt?: string;
+      provider?: string;
+      model?: string;
+      prompt_tokens?: null;
+      completion_tokens?: null;
+    } = {};
+    if (regenerating) {
+      const nextPrompt = (body.prompt ?? existing.prompt).trim();
+      const nextProvider = body.provider ?? existing.provider;
+      const nextModel = body.model ?? existing.model;
+      if (!nextPrompt || !isProvider(nextProvider) || !nextModel) {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
+      const modelAllowed = hasModelCatalog(nextProvider)
+        ? await isKnownCatalogModel(nextProvider, nextModel)
+        : nextModel === MODELS[nextProvider].conversation;
+      if (!modelAllowed) {
+        return NextResponse.json(
+          { error: `Unknown model for ${nextProvider}: ${nextModel}` },
+          { status: 400 },
+        );
+      }
+      rerunFields = {
+        prompt: nextPrompt,
+        provider: nextProvider,
+        model: nextModel,
+        prompt_tokens: null,
+        completion_tokens: null,
+      };
     }
 
     const [nodesRes, edgesRes, ownEdgesRes] = await Promise.all([
@@ -103,16 +137,16 @@ export async function POST(request: Request) {
     nodeEdges = ownEdgesRes.data ?? [];
     contextIds = nodeEdges.map((e) => e.source_node_id);
 
-    // Compare-and-swap, not a bare write: the status check above is a separate
-    // round trip, so two concurrent retries (a double-clicked button) would
-    // both read "error" and both proceed, interleaving two streams onto one
-    // row. Claiming the node by matching on status="error" means exactly one
-    // request wins and the loser gets a 409.
     const { data: reset, error: resetError } = await supabase
       .from("nodes")
-      .update({ response: "", status: "streaming", error_message: null })
+      .update({
+        ...rerunFields,
+        response: "",
+        status: "streaming",
+        error_message: null,
+      })
       .eq("id", existing.id)
-      .eq("status", "error")
+      .in("status", rerunnable)
       .select()
       .maybeSingle();
     if (resetError) {
@@ -120,7 +154,9 @@ export async function POST(request: Request) {
     }
     if (!reset) {
       return NextResponse.json(
-        { error: "This card is already being retried" },
+        {
+          error: `This card is already being ${regenerating ? "regenerated" : "retried"}`,
+        },
         { status: 409 },
       );
     }
@@ -144,17 +180,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
-    // Deduplicate before anything downstream sees the list. Membership was
-    // checked but repeats were not, and topoOrder preserves duplicates for
-    // independent nodes — so [X, X] survived all the way to the context_edges
-    // insert, where it tripped `unique (node_id, source_node_id)`. By then the
-    // node row existed, so the failure path created a card, deleted it again,
-    // and handed the caller a raw Postgres "duplicate key value" string.
     const contextNodeIds = [...new Set(rawContextNodeIds)];
-    // Providers with a pinned tier accept exactly that id. Catalogue providers
-    // accept anything the catalogue currently lists — checked here, before a
-    // node row exists, so a typo is a 400 on the composer rather than a card
-    // that has to be created only to immediately fail.
     const modelAllowed = hasModelCatalog(provider)
       ? await isKnownCatalogModel(provider, model)
       : model === MODELS[provider].conversation;
@@ -177,8 +203,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Load the graph once; RLS already scopes rows to this user, and the
-    // conversation filter pins every referenced node to this conversation.
     const [nodesRes, edgesRes] = await Promise.all([
       supabase
         .from("nodes")
@@ -263,7 +287,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // Decrypt the key server-side; never returned to the client.
   const provider = node.provider as Provider;
   const { data: cred } = await supabase
     .from("provider_creds")
@@ -283,12 +306,6 @@ export async function POST(request: Request) {
       { status: 422 },
     );
   }
-  // The node is already "streaming" at this point (freshly inserted, or reset
-  // by the retry path above). decryptSecret throws on a missing/short
-  // APP_ENCRYPTION_KEY or a corrupt ciphertext, and letting that escape would
-  // strand the row in "streaming" forever — the card spins indefinitely and
-  // CardBody only offers Retry on "error". Mark it errored like the
-  // missing-credential branch does.
   let apiKey: string;
   try {
     apiKey = decryptSecret(cred.encrypted_key);
@@ -309,9 +326,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Assemble the message array: selected context cards, topological order,
-  // oldest first — each contributes its prompt/response pair — then the new
-  // prompt.
   const nodesById = new Map(conversationNodes.map((n) => [n.id, n]));
   const messages: ChatMessage[] = [];
   for (const id of contextIds) {
@@ -347,9 +361,6 @@ export async function POST(request: Request) {
       let usage: { promptTokens: number | null; completionTokens: number | null } =
         { promptTokens: null, completionTokens: null };
 
-      // Partial responses are never discarded: flush the buffer to Supabase
-      // every ~2s or ~500 chars so a hard client death still leaves the
-      // partial answer on the server.
       const maybeFlush = async () => {
         if (
           accumulated.length - flushedLength >= 500 ||
@@ -398,15 +409,8 @@ export async function POST(request: Request) {
           .eq("id", node.id)
           .select()
           .maybeSingle();
-        // The re-select comes back null if the update matched no rows (the
-        // node or its conversation was deleted mid-stream, or a transient
-        // failure). ChatStreamEvent types done.node as non-nullable and the
-        // client dereferences it straight away, so falling back to the row we
-        // already hold keeps that contract — emitting null here would throw in
-        // handleEvent and rewrite a *successful* card as "Connection lost".
         send({ type: "done", node: finalNode ?? { ...node, ...completed } });
       } catch (err) {
-        // Whatever tokens already arrived are kept and persisted.
         const message =
           err instanceof Error ? err.message : "Generation failed";
         const errored = {
@@ -429,7 +433,6 @@ export async function POST(request: Request) {
         try {
           controller.close();
         } catch {
-          // already closed/cancelled
         }
       }
     },

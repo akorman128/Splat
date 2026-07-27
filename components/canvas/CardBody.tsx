@@ -3,16 +3,13 @@
 import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Maximize2 } from "lucide-react";
+import { Loader2, Maximize2, RefreshCw } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
+import { useComposerStore } from "@/lib/store/composer-store";
 import { estimateTokens } from "@/lib/tokens";
 import { SuggestionRail } from "./SuggestionRail";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
-
-// Renders one card's content, reading everything from application state by
-// nodeId. Interactive children stop pointer propagation so clicks don't
-// start a canvas drag; everything else drags/selects the card as normal.
 
 const stop = (e: React.PointerEvent | React.WheelEvent) => e.stopPropagation();
 
@@ -20,6 +17,10 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const { node, responseText, contextCount, isStreaming, isError } =
     useCardState(nodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
+  const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
+  const isRegenerateTarget = useComposerStore(
+    (s) => s.regenerateNodeId === nodeId,
+  );
 
   if (!node) {
     return (
@@ -34,9 +35,8 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
       <div
         className={`flex h-full w-full flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-md ${
           isError ? "border-destructive/60" : ""
-        }`}
+        } ${isRegenerateTarget ? "ring-2 ring-primary" : ""}`}
       >
-        {/* Title */}
         <div className="flex items-center gap-2 border-b px-3 py-2">
           {isStreaming && (
             <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
@@ -44,6 +44,25 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           <span className="flex-1 truncate text-sm font-semibold">
             {node.title ?? (isStreaming ? "Thinking…" : "Untitled")}
           </span>
+          {!isStreaming && (
+            <button
+              type="button"
+              title={
+                isRegenerateTarget ? "Cancel regeneration" : "Regenerate answer"
+              }
+              className={`rounded p-1 ${
+                isRegenerateTarget
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+              onPointerDown={stop}
+              onClick={() =>
+                setRegenerateNode(isRegenerateTarget ? null : nodeId)
+              }
+            >
+              <RefreshCw className="size-3.5" />
+            </button>
+          )}
           <button
             type="button"
             title="Expand"
@@ -55,14 +74,12 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           </button>
         </div>
 
-        {/* Prompt, collapsed to two lines */}
         <div className="border-b bg-muted/40 px-3 py-2">
           <p className="line-clamp-2 text-xs text-muted-foreground">
             {node.prompt}
           </p>
         </div>
 
-        {/* Response, scrollable */}
         <div
           className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
           onPointerDown={stop}
@@ -87,7 +104,6 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center gap-2 border-t px-3 py-1.5 text-[10px] text-muted-foreground">
           <span className="truncate">{node.model}</span>
           <span>·</span>
