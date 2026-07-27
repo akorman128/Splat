@@ -28,6 +28,15 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
   anthropic: "Anthropic",
 };
 
+/**
+ * Where each provider issues API keys. Linked from the key form so "paste your
+ * API key" has somewhere to go for a user who doesn't have one yet.
+ */
+export const PROVIDER_KEY_URLS: Record<Provider, string> = {
+  openai: "https://platform.openai.com/api-keys",
+  anthropic: "https://platform.claude.com/settings/workspaces/default/keys",
+};
+
 export function conversationModelLabel(provider: Provider): string {
   return `${PROVIDER_LABELS[provider]} · ${MODELS[provider].conversation}`;
 }
