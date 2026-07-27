@@ -35,6 +35,10 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Sidebar",
+    shortcuts: [{ keys: [MOD, "B"], label: "Hide or show the sidebar" }],
+  },
+  {
     title: "Help",
     shortcuts: [{ keys: [MOD, "/"], label: "Show the shortcut list" }],
   },
