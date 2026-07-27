@@ -68,6 +68,7 @@ function reconcile(
   editor: Editor,
   nodes: Record<string, NodeRow>,
   edges: ContextEdgeRow[],
+  removing: { current: boolean },
 ) {
   const hadShapes = editor.getCurrentPageShapeIds().size > 0;
   let createdAny = false;
@@ -123,8 +124,24 @@ function reconcile(
           );
         }
       }
+
+      const expected = new Set<TLShapeId>();
+      for (const node of Object.values(nodes)) {
+        expected.add(cardShapeId(node.id));
+        if (node.parent_id) expected.add(parentArrowId(node.id));
+      }
+      for (const edge of edges) expected.add(contextArrowId(edge.id));
+
+      const stale = [...editor.getCurrentPageShapeIds()].filter(
+        (id) => !expected.has(id),
+      );
+      if (stale.length > 0) {
+        removing.current = true;
+        editor.deleteShapes(stale);
+        removing.current = false;
+      }
     },
-    { history: "ignore" },
+    { history: "ignore", ignoreShapeLock: true },
   );
 
   if (!hadShapes && createdAny) {
@@ -148,9 +165,10 @@ export default function Canvas() {
   );
   const pendingGeometry = useRef(new Map<string, Geometry>());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const removing = useRef(false);
 
   useEffect(() => {
-    if (editor) reconcile(editor, nodes, edges);
+    if (editor) reconcile(editor, nodes, edges, removing);
   }, [editor, nodes, edges]);
 
   const { mutate: persistGeometry } = useMutation({
@@ -258,7 +276,23 @@ export default function Canvas() {
 
           const stopDelete = mountedEditor.sideEffects.registerBeforeDeleteHandler(
             "shape",
-            () => false,
+            (shape) => {
+              if (removing.current) return;
+              if (shape.type === CARD_SHAPE_TYPE) {
+                const selected = mountedEditor
+                  .getSelectedShapes()
+                  .filter((s): s is CardShape => s.type === CARD_SHAPE_TYPE);
+                const batch = selected.some((s) => s.id === shape.id)
+                  ? selected
+                  : [shape as CardShape];
+                if (batch[0].id === shape.id) {
+                  useGraphStore
+                    .getState()
+                    .setDeletingNodes(batch.map((s) => s.props.nodeId));
+                }
+              }
+              return false;
+            },
           );
 
           const stopListen = mountedEditor.sideEffects.registerAfterChangeHandler(

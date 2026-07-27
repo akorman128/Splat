@@ -11,6 +11,9 @@ type GraphState = {
   suggestions: Record<string, SuggestionRow[]>;
   selectedNodeId: string | null;
   expandedNodeId: string | null;
+  deletingNodeIds: string[];
+  // Deleted ids are kept so a stream still in flight cannot re-add its card.
+  removedNodeIds: Record<string, true>;
 
   init(payload: {
     conversationId: string;
@@ -24,6 +27,8 @@ type GraphState = {
   markSuggestionTaken(suggestionId: string, takenAt: string): void;
   setSelectedNode(id: string | null): void;
   setExpandedNode(id: string | null): void;
+  setDeletingNodes(ids: string[]): void;
+  removeNodes(ids: string[]): void;
   updateNodeGeometry(
     id: string,
     geometry: { x: number; y: number; w: number; h: number },
@@ -46,6 +51,8 @@ export const useGraphStore = create<GraphState>((set) => ({
   suggestions: {},
   selectedNodeId: null,
   expandedNodeId: null,
+  deletingNodeIds: [],
+  removedNodeIds: {},
 
   init({ conversationId, nodes, edges, suggestions }) {
     const suggestionMap: Record<string, SuggestionRow[]> = {};
@@ -63,12 +70,15 @@ export const useGraphStore = create<GraphState>((set) => ({
       suggestions: suggestionMap,
       selectedNodeId: null,
       expandedNodeId: null,
+      deletingNodeIds: [],
+      removedNodeIds: {},
     });
   },
 
   upsertNode(node) {
     set((state) => {
       if (state.conversationId !== node.conversation_id) return state;
+      if (state.removedNodeIds[node.id]) return state;
       return { nodes: { ...state.nodes, [node.id]: node } };
     });
   },
@@ -76,7 +86,12 @@ export const useGraphStore = create<GraphState>((set) => ({
   addEdges(edges) {
     set((state) => {
       const known = new Set(state.edges.map((e) => e.id));
-      const fresh = edges.filter((e) => !known.has(e.id));
+      const fresh = edges.filter(
+        (e) =>
+          !known.has(e.id) &&
+          !state.removedNodeIds[e.node_id] &&
+          !state.removedNodeIds[e.source_node_id],
+      );
       if (fresh.length === 0) return state;
       const contextCounts = { ...state.contextCounts };
       for (const e of fresh) {
@@ -113,6 +128,46 @@ export const useGraphStore = create<GraphState>((set) => ({
 
   setExpandedNode(id) {
     set({ expandedNodeId: id });
+  },
+
+  setDeletingNodes(ids) {
+    set({ deletingNodeIds: ids });
+  },
+
+  removeNodes(ids) {
+    set((state) => {
+      const gone = new Set(ids);
+      const nodes: Record<string, NodeRow> = {};
+      for (const [id, node] of Object.entries(state.nodes)) {
+        if (!gone.has(id)) nodes[id] = node;
+      }
+      const suggestions: Record<string, SuggestionRow[]> = {};
+      for (const [id, rows] of Object.entries(state.suggestions)) {
+        if (!gone.has(id)) suggestions[id] = rows;
+      }
+      const edges = state.edges.filter(
+        (e) => !gone.has(e.node_id) && !gone.has(e.source_node_id),
+      );
+      const removedNodeIds = { ...state.removedNodeIds };
+      for (const id of ids) removedNodeIds[id] = true;
+
+      return {
+        nodes,
+        edges,
+        contextCounts: countByConsumer(edges),
+        suggestions,
+        removedNodeIds,
+        deletingNodeIds: [],
+        selectedNodeId:
+          state.selectedNodeId && gone.has(state.selectedNodeId)
+            ? null
+            : state.selectedNodeId,
+        expandedNodeId:
+          state.expandedNodeId && gone.has(state.expandedNodeId)
+            ? null
+            : state.expandedNodeId,
+      };
+    });
   },
 
   updateNodeGeometry(id, { x, y, w, h }) {

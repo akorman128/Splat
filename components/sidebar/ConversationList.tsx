@@ -14,10 +14,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +34,7 @@ import {
   MessageSquare,
   Plus,
   Settings,
+  Trash2,
 } from "lucide-react";
 
 export type ConversationSummary = {
@@ -50,6 +53,10 @@ export function AppSidebar({
   const router = useRouter();
   const pathname = usePathname();
   const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
 
   async function newConversation() {
     setCreating(true);
@@ -67,6 +74,27 @@ export function AppSidebar({
       return;
     }
     router.push(`/c/${data.id}`);
+    router.refresh();
+  }
+
+  async function deleteConversation() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", pendingDelete.id);
+    setDeleting(false);
+    if (error) {
+      toast.error("Could not delete conversation", {
+        description: error.message,
+      });
+      return;
+    }
+    const wasOpen = pathname === `/c/${pendingDelete.id}`;
+    setPendingDelete(null);
+    if (wasOpen) router.push("/c");
     router.refresh();
   }
 
@@ -107,11 +135,21 @@ export function AppSidebar({
                 <SidebarMenuItem key={c.id}>
                   <SidebarMenuButton
                     isActive={pathname === `/c/${c.id}`}
+                    className="pr-8"
                     render={<Link href={`/c/${c.id}`} />}
                   >
                     <MessageSquare className="size-4" />
                     <span className="truncate">{c.title}</span>
                   </SidebarMenuButton>
+                  <SidebarMenuAction
+                    showOnHover
+                    title="Delete conversation"
+                    className="hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setPendingDelete(c)}
+                  >
+                    <Trash2 />
+                    <span className="sr-only">Delete conversation</span>
+                  </SidebarMenuAction>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
@@ -142,6 +180,25 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDelete(null);
+        }}
+        title="Delete conversation?"
+        description={
+          <>
+            <span className="font-medium text-foreground">
+              {pendingDelete?.title}
+            </span>{" "}
+            and every card on its canvas will be deleted. This cannot be undone.
+          </>
+        }
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        pending={deleting}
+        onConfirm={deleteConversation}
+      />
     </Sidebar>
   );
 }

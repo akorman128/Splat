@@ -6,6 +6,7 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { Composer } from "@/components/composer/Composer";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
+import { DeleteNodeDialog } from "./DeleteNodeDialog";
 import type {
   ContextEdgeRow,
   CredentialSummary,
@@ -60,6 +61,7 @@ export function ConversationView({
         </div>
       )}
       <ExpandedCardOverlay />
+      <DeleteNodeDialog />
     </div>
   );
 }

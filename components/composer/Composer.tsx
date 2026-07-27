@@ -144,7 +144,7 @@ export function Composer({
 
     const contextNodeIds = parentNode
       ? Object.entries(checked)
-          .filter(([, v]) => v)
+          .filter(([id, v]) => v && graph.nodes[id])
           .map(([id]) => id)
       : [];
     const position = parentNode
