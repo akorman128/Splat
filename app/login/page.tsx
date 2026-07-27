@@ -16,18 +16,32 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmationSentTo, setConfirmationSentTo] = useState<string | null>(
+    null,
+  );
 
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
     setError(null);
     const supabase = createClient();
-    const { error } =
+    const { data, error } =
       mode === "signin"
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password });
     if (error) {
       setError(error.message);
+      setPending(false);
+      return;
+    }
+    // A successful signUp is not necessarily a session. With email
+    // confirmation enabled — the Supabase default — it returns
+    // `{user, session: null}` and no auth cookie is set, so navigating to /c
+    // would be bounced straight back to this page by the proxy with nothing
+    // on screen to explain why. Only route into the app once a session
+    // actually exists; otherwise say what happens next.
+    if (!data.session) {
+      setConfirmationSentTo(email);
       setPending(false);
       return;
     }
@@ -50,6 +64,37 @@ export default function LoginPage() {
       setPending(false);
     }
     // On success the browser navigates away to Google.
+  }
+
+  if (confirmationSentTo) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center px-6">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <Link href="/" className="text-2xl font-semibold tracking-tight">
+            Splat
+          </Link>
+          <h1 className="text-lg font-medium">Check your email</h1>
+          <p className="text-sm text-muted-foreground">
+            We sent a confirmation link to{" "}
+            <span className="font-medium text-foreground">
+              {confirmationSentTo}
+            </span>
+            . Open it to finish creating your account, then sign in.
+          </p>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              setConfirmationSentTo(null);
+              setMode("signin");
+              setPassword("");
+            }}
+          >
+            Back to sign in
+          </Button>
+        </div>
+      </main>
+    );
   }
 
   return (

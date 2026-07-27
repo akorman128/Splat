@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { NewConversationPrompt } from "./NewConversationPrompt";
 
-// App home: land on the newest conversation, creating one on first visit.
+// App home: land on the newest conversation, or offer to create the first one.
+// This render is read-only by design — see createFirstConversation in
+// ./actions.ts for why the INSERT that used to live here moved out.
 // First-run users with no provider key are sent through onboarding once
 // (the "skipped" cookie lets them decline and still reach the composer,
 // which renders its own disabled state).
@@ -31,15 +34,5 @@ export default async function AppHome() {
     redirect(`/c/${newest.id}`);
   }
 
-  const { data: created, error } = await supabase
-    .from("conversations")
-    .insert({ title: "New conversation" })
-    .select("id")
-    .single();
-
-  if (error || !created) {
-    throw new Error(`Could not create a conversation: ${error?.message}`);
-  }
-
-  redirect(`/c/${created.id}`);
+  return <NewConversationPrompt />;
 }

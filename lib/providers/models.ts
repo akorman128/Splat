@@ -1,5 +1,7 @@
 // Model role map — the ONLY place model ids live. Client-safe (no SDK imports,
-// no secrets): the composer reads it to build the model dropdown.
+// no secrets): the composer reads it for the provider list and each provider's
+// label. It is not a dropdown of models — there is exactly one conversation
+// model per provider, and /api/chat rejects any other id.
 //
 // Ids confirmed against provider docs on 2026-07-25:
 // - OpenAI GPT-5.6 series (developers.openai.com/api/docs/models)
