@@ -8,10 +8,6 @@ import { topoOrder } from "@/lib/graph/topo-order";
 import { estimateTokens } from "@/lib/tokens";
 import type { NodeRow } from "@/lib/types";
 
-// Context panel: every ancestor of the selected card (the parent-to-be),
-// each with a checkbox and an approximate token count, plus a running total.
-// Granularity is the whole card — prompt and response travel together.
-
 export function ContextPicker({
   parent,
   checked,

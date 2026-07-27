@@ -1,17 +1,6 @@
 import "server-only";
 import { z } from "zod";
 
-// Shared schema + prompt for the structured "title + 3 suggestions" call.
-// Three separate string properties (not an array with minItems/maxItems)
-// because strict-mode schema support for array-length constraints differs
-// between providers; three required fields guarantees exactly three.
-//
-// Declared as a Zod object so both adapters can hand it to their SDK's
-// structured-output helper (zodOutputFormat / zodTextFormat) and use the
-// SDK's own parse path. That validates the payload as well as decoding it —
-// a hand-rolled JSON.parse returns `any`, so a model that omitted a field
-// (or a truncated body) only blew up later, on `.trim()` of undefined.
-
 export const FollowupsSchema = z.object({
   title: z
     .string()
@@ -47,12 +36,6 @@ export function followupsPrompt(prompt: string, response: string): string {
 
 export type RawFollowups = z.infer<typeof FollowupsSchema>;
 
-/**
- * Normalise the model's four flat strings into the shape the app stores.
- * `parsed` is null when the SDK had no structured payload to decode (an empty
- * body, or the whole output budget spent on reasoning tokens) — surface that
- * as a clear error rather than dereferencing null.
- */
 export function toStructured(parsed: RawFollowups | null): {
   title: string;
   suggestions: [string, string, string];

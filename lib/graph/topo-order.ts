@@ -1,14 +1,5 @@
 import type { GraphEdgeRef, GraphNodeRef } from "./ancestors";
 
-/**
- * Order a set of node ids topologically (ancestors before descendants),
- * oldest-first among independents. Kahn's algorithm over the union graph of
- * parent links and context edges, restricted to the given subset.
- *
- * Because every edge points from an older node to a newer one, created_at
- * is itself a valid topological order — the explicit sort keeps that
- * guarantee even if timestamps ever collide.
- */
 export function topoOrder(
   ids: string[],
   nodes: GraphNodeRef[],
@@ -51,8 +42,6 @@ export function topoOrder(
     }
   }
 
-  // A cycle would leave nodes unemitted; the DB prevents cycles, but never
-  // silently drop context if something is out of sync.
   if (result.length !== ids.length) {
     const emitted = new Set(result);
     for (const id of ids) if (!emitted.has(id)) result.push(id);

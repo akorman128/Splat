@@ -1,16 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// OAuth (PKCE) code exchange endpoint. Google redirects here via Supabase.
-
-/**
- * `next` is attacker-controllable (it rides along on the authorize URL), so it
- * may only ever be an in-app absolute path. Without this check
- * `${origin}${next}` is an open redirect: `next=@evil.com` builds
- * "https://app.example.com@evil.com", which parses as userinfo=app.example.com
- * host=evil.com — a phishing link wearing our domain. A leading "//" (or "/\")
- * is likewise protocol-relative and off-site.
- */
 function safeNext(raw: string | null): string {
   const fallback = "/c";
   if (!raw || !raw.startsWith("/")) return fallback;

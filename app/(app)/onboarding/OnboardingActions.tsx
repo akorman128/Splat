@@ -7,8 +7,6 @@ export function OnboardingActions({ hasAnyKey }: { hasAnyKey: boolean }) {
   const router = useRouter();
 
   function proceed() {
-    // Remember the skip so /c stops bouncing back here; keys can always be
-    // added later under Settings.
     document.cookie = "onboarding-skipped=1; path=/; max-age=31536000";
     router.push("/c");
   }

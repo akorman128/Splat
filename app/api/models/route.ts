@@ -8,14 +8,6 @@ import {
   isProvider,
 } from "@/lib/providers/models";
 
-// Model catalogue for providers that have one (currently OpenRouter), so the
-// composer can offer every model the provider serves.
-//
-// Proxied rather than fetched from the browser for the same reason every other
-// provider call is: the client talks to our API, never to a provider. It is
-// also the only place the response gets normalised and the non-text models
-// filtered out, so the picker and /api/chat's validation agree on one list.
-
 export async function GET(request: Request) {
   const supabase = await createClient();
   const claims = await authClaims(supabase);

@@ -4,16 +4,10 @@ import { decryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
 import type { Provider } from "@/lib/providers/models";
 
-// Structured "title + exactly 3 follow-ups" call on the utility model.
-// Fired eagerly by the client when a node completes; suggestions are data,
-// stored on the node, never scraped out of the prose response.
-
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  // getUser() rather than a local claims check: this spends the caller's
-  // provider key, so a revoked or signed-out token must not still authorise it.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -65,8 +59,6 @@ export async function POST(request: Request) {
       apiKey: decryptSecret(cred.encrypted_key),
       prompt: node.prompt,
       response: node.response,
-      // The card's own model, so a catalogue provider has a known-reachable
-      // id to fall back to if its utility model is unavailable to this key.
       model: node.model,
     });
   } catch (err) {
@@ -78,8 +70,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Persist: title on the node, three suggestion rows (replacing any prior
-  // generation for this node).
   await supabase
     .from("nodes")
     .update({ title: result.title })
@@ -100,7 +90,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  // A root card's title doubles as the conversation title in the sidebar.
   if (!node.parent_id) {
     await supabase
       .from("conversations")

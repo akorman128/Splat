@@ -15,13 +15,6 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { createClient } from "@/lib/supabase/client";
 import type { ContextEdgeRow, NodeRow } from "@/lib/types";
 
-// tldraw owns geometry only. Cards are created from Supabase-backed rows in
-// the graph store; positions are persisted back to nodes.canvas_* debounced.
-// Edges are a read-only visualization of parent_id + context_edges: arrows
-// are created programmatically, locked (not selectable, so terminals can't
-// be re-attached), and protected from deletion; the arrow tool is
-// unreachable because hideUi disables tools and their keyboard shortcuts.
-
 const shapeUtils = [CardShapeUtil];
 
 type Geometry = { x: number; y: number; w: number; h: number };
@@ -94,7 +87,6 @@ function reconcile(
         createdAny = true;
       }
 
-      // Solid arrow for the structural parent edge.
       for (const node of Object.values(nodes)) {
         if (!node.parent_id) continue;
         const arrowId = parentArrowId(node.id);
@@ -113,7 +105,6 @@ function reconcile(
         }
       }
 
-      // Dashed arrows for additional (non-parent) context sources.
       for (const edge of edges) {
         const child = nodes[edge.node_id];
         if (!child || edge.source_node_id === child.parent_id) continue;
@@ -149,10 +140,6 @@ export default function Canvas() {
   const { resolvedTheme } = useTheme();
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
-  // resolvedTheme is undefined until next-themes has run on the client, which
-  // is after the editor is built — so read the class its pre-hydration script
-  // already put on <html> instead, or a dark-mode user gets a white canvas
-  // for a frame on every conversation load.
   const [initialColorScheme] = useState<"dark" | "light">(() =>
     typeof document !== "undefined" &&
     document.documentElement.classList.contains("dark")
@@ -166,10 +153,6 @@ export default function Canvas() {
     if (editor) reconcile(editor, nodes, edges);
   }, [editor, nodes, edges]);
 
-  // One row update per moved card. The failure is reported from inside the
-  // mutation function rather than an `onError` handler because the flush below
-  // also runs on unmount, and by then the observer that would dispatch those
-  // callbacks is gone — the request itself still goes out.
   const { mutate: persistGeometry } = useMutation({
     mutationFn: async ({
       nodeId,
@@ -193,7 +176,6 @@ export default function Canvas() {
     },
   });
 
-  // Write whatever geometry is buffered straight through, ignoring the debounce.
   const flushGeometry = useCallback(() => {
     if (flushTimer.current) {
       clearTimeout(flushTimer.current);
@@ -210,12 +192,6 @@ export default function Canvas() {
     }
   }, [persistGeometry]);
 
-  // Same buffer, but for a page that is going away. The requests flushGeometry
-  // fires are ordinary fetches, and the browser cancels those the moment the
-  // document unloads — so a drag followed by a reload inside the debounce
-  // window still lost the position even with the unmount flush below.
-  // sendBeacon is the transport that outlives the page; /api/geometry exists
-  // to receive it.
   const beaconGeometry = useCallback(() => {
     if (flushTimer.current) {
       clearTimeout(flushTimer.current);
@@ -229,8 +205,6 @@ export default function Canvas() {
     }));
     pendingGeometry.current.clear();
 
-    // Keep the store in step in case the page is restored from bfcache rather
-    // than actually torn down.
     const graph = useGraphStore.getState();
     for (const { id, ...geometry } of updates) {
       graph.updateNodeGeometry(id, geometry);
@@ -240,24 +214,14 @@ export default function Canvas() {
       type: "application/json",
     });
     if (!navigator.sendBeacon("/api/geometry", payload)) {
-      // Queue full or the payload was rejected — nothing better to try at
-      // this point in the page's life, but say so rather than fail silently.
       console.error("Failed to queue card positions before unload");
     }
   }, []);
 
-  // Switching conversations unmounts this component (ConversationView renders
-  // null for a render while the store re-inits), so a drag followed by a
-  // sidebar click inside the 600ms debounce used to be dropped on the floor:
-  // the cleanup cleared the timer without ever writing the batch. Flush first.
   useEffect(() => {
     return () => flushGeometry();
   }, [flushGeometry]);
 
-  // pagehide covers reload, navigation and tab close, and unlike beforeunload
-  // it does not disqualify the page from bfcache. visibilitychange is the one
-  // that actually fires on mobile, where a backgrounded tab can be discarded
-  // without ever reaching pagehide.
   useEffect(() => {
     const onHide = () => beaconGeometry();
     const onVisibility = () => {
@@ -276,9 +240,6 @@ export default function Canvas() {
     flushTimer.current = setTimeout(flushGeometry, 600);
   }
 
-  // Keep the canvas chrome in step with the app's theme. This has to be a
-  // preference update rather than the colorScheme prop, because tldraw treats
-  // that prop as construction-time config.
   useEffect(() => {
     if (!editor || !resolvedTheme) return;
     editor.user.updateUserPreferences({
@@ -290,25 +251,16 @@ export default function Canvas() {
     <div className="absolute inset-0">
       <Tldraw
         hideUi
-        // Initial value only, and deliberately a constant: tldraw rebuilds the
-        // entire editor when this prop changes, which would drop the camera
-        // and re-run reconcile on every theme flip. Live changes go through
-        // updateUserPreferences in the effect above.
         colorScheme={initialColorScheme}
         shapeUtils={shapeUtils}
         onMount={(mountedEditor) => {
           mountedEditor.setCurrentTool("select");
 
-          // The canvas renders the graph; it does not edit it. No shape —
-          // card or arrow — is user-deletable.
           const stopDelete = mountedEditor.sideEffects.registerBeforeDeleteHandler(
             "shape",
             () => false,
           );
 
-          // Persist card geometry on change, debounced.
-          // NOTE: editor.store.listen never delivered entries in this tldraw
-          // build; the side-effects API is the reliable change hook.
           const stopListen = mountedEditor.sideEffects.registerAfterChangeHandler(
             "shape",
             (prev, next) => {
@@ -333,8 +285,6 @@ export default function Canvas() {
             },
           );
 
-          // Mirror single-card selection into the graph store; the composer
-          // uses it as the parent for the next prompt.
           const stopSelection = mountedEditor.sideEffects.registerAfterChangeHandler(
             "instance_page_state",
             (prev, next) => {

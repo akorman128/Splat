@@ -6,10 +6,6 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { useSubmitSuggestion } from "@/lib/chat-actions";
 import type { SuggestionRow } from "@/lib/types";
 
-// Three clickable suggestion chips to the right of a card. Suggestions are
-// persisted data on the node — generated eagerly by the utility model when
-// the response completes, surviving reload.
-
 const stop = (e: React.PointerEvent) => e.stopPropagation();
 
 export function SuggestionRail({ nodeId }: { nodeId: string }) {

@@ -11,11 +11,6 @@ import {
 import { CARD_H, CARD_W } from "@/lib/layout";
 import { CardBody } from "./CardBody";
 
-// Custom tldraw shape for a conversation node. Per the architecture split,
-// props hold a nodeId and geometry — nothing else meaningful. All content is
-// read from the graph/stream stores keyed by that id, so streaming tokens
-// never touch the tldraw shape store.
-
 export const CARD_SHAPE_TYPE = "node-card" as const;
 
 declare module "tldraw" {
@@ -38,8 +33,6 @@ export class CardShapeUtil extends ShapeUtil<CardShape> {
     return { w: CARD_W, h: CARD_H, nodeId: "" };
   }
 
-  // Cards are fixed-size (expanded view is an overlay, not a resize),
-  // move-only on the canvas.
   override canResize() {
     return false;
   }
@@ -53,8 +46,6 @@ export class CardShapeUtil extends ShapeUtil<CardShape> {
     return true;
   }
   override canBind() {
-    // Only our programmatic arrow bindings exist; the arrow tool is
-    // unreachable (hideUi disables tools and their shortcuts).
     return true;
   }
 

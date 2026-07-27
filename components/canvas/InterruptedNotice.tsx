@@ -4,17 +4,6 @@ import { toast } from "sonner";
 import { Loader2, RotateCcw } from "lucide-react";
 import { useChatStream } from "@/lib/chat-client";
 
-// The "generation was interrupted" panel and its Retry button, shared by the
-// canvas card and the expanded overlay.
-
-/**
- * Retry is guarded while in flight. The server claims the node with a
- * compare-and-swap and 409s the loser, so a double-click can no longer
- * interleave two streams onto one row — but the second request was still
- * wasted, and because the result was discarded (`void retryChat(...)`) the
- * user saw nothing at all when a retry failed for a real reason (no API key,
- * undecryptable key). Disable while running and surface the error.
- */
 export function InterruptedNotice({
   nodeId,
   errorMessage,
@@ -35,8 +24,6 @@ export function InterruptedNotice({
     );
   }
 
-  // On the canvas, swallow the pointer so clicking Retry doesn't start a
-  // card drag. In the dialog there is no canvas underneath.
   const stopPointer = compact
     ? (e: React.PointerEvent) => e.stopPropagation()
     : undefined;

@@ -34,12 +34,6 @@ export default function LoginPage() {
       setPending(false);
       return;
     }
-    // A successful signUp is not necessarily a session. With email
-    // confirmation enabled — the Supabase default — it returns
-    // `{user, session: null}` and no auth cookie is set, so navigating to /c
-    // would be bounced straight back to this page by the proxy with nothing
-    // on screen to explain why. Only route into the app once a session
-    // actually exists; otherwise say what happens next.
     if (!data.session) {
       setConfirmationSentTo(email);
       setPending(false);
@@ -63,7 +57,6 @@ export default function LoginPage() {
       setError(error.message);
       setPending(false);
     }
-    // On success the browser navigates away to Google.
   }
 
   if (confirmationSentTo) {

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowUp, GitBranch } from "lucide-react";
+import { ArrowUp, GitBranch, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -31,11 +31,6 @@ import {
 } from "@/lib/providers/models";
 import type { CredentialSummary } from "@/lib/types";
 
-/**
- * A fixed-model provider names its model right in the dropdown. A catalogue
- * provider cannot — the model is a separate choice, made in the ModelPicker
- * beside it — so repeating a model id here would just contradict it.
- */
 function providerLabel(provider: Provider): string {
   return hasModelCatalog(provider)
     ? PROVIDER_LABELS[provider]
@@ -60,14 +55,18 @@ export function Composer({
   const setProvider = useComposerStore((s) => s.setProvider);
   const model = useComposerStore((s) => s.model);
   const setModel = useComposerStore((s) => s.setModel);
+  const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
+  const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const parent = useGraphStore((s) =>
     s.selectedNodeId ? s.nodes[s.selectedNodeId] : undefined,
+  );
+  const regenerateTarget = useGraphStore((s) =>
+    regenerateNodeId ? s.nodes[regenerateNodeId] : undefined,
   );
 
   const connectedProviders = credentials.map((c) => c.provider);
   const hasKey = connectedProviders.length > 0;
 
-  // Keep the (zustand-held) provider selection valid for this account.
   useEffect(() => {
     if (!provider || !connectedProviders.includes(provider)) {
       setProvider(connectedProviders[0] ?? null);
@@ -75,8 +74,6 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credentials.map((c) => c.provider).join(",")]);
 
-  // Default context: the full ancestor path from the selected card to root.
-  // Recomputed when the selected parent changes (adjust-state-during-render).
   const [lastParentId, setLastParentId] = useState<string | null>(null);
   if ((parent?.id ?? null) !== lastParentId) {
     setLastParentId(parent?.id ?? null);
@@ -89,12 +86,51 @@ export function Composer({
     }
   }
 
+  const [parkedDraft, setParkedDraft] = useState("");
+  const [lastRegenerateId, setLastRegenerateId] = useState<string | null>(null);
+  if (regenerateNodeId !== lastRegenerateId) {
+    setLastRegenerateId(regenerateNodeId);
+    if (regenerateNodeId) {
+      if (lastRegenerateId === null) setParkedDraft(prompt);
+      setPrompt(useGraphStore.getState().nodes[regenerateNodeId]?.prompt ?? "");
+    } else {
+      setPrompt(parkedDraft);
+      setParkedDraft("");
+    }
+  }
+
+  function regenerate() {
+    if (sending) return;
+    const text = prompt.trim();
+    if (!text || !provider || !regenerateNodeId) return;
+
+    setSending(true);
+    chat
+      .mutateAsync({
+        request: {
+          regenerateNodeId,
+          prompt: text,
+          provider,
+          model: model ?? defaultModel(provider),
+        },
+        onNode: (node) => {
+          setSending(false);
+          setRegenerateNode(null);
+          useGraphStore.getState().setSuggestions(node.id, []);
+        },
+        onTitled: (_nodeId, isRoot) => {
+          if (isRoot) router.refresh();
+        },
+      })
+      .catch((error: Error) => toast.error(error.message))
+      .finally(() => setSending(false));
+  }
+
   function submit() {
-    // Guard against a second submission before the first node exists. Both
-    // calls would otherwise read the same node set, so childPosition/
-    // rootPosition would hand them identical coordinates and one card would
-    // sit exactly on top of the other, invisible. Released on the "node"
-    // event rather than at end-of-stream, so branching stays responsive.
+    if (regenerateNodeId) {
+      regenerate();
+      return;
+    }
     if (sending) return;
     const text = prompt.trim();
     if (!text || !provider) return;
@@ -118,10 +154,6 @@ export function Composer({
     setPrompt("");
     setSending(true);
 
-    // mutateAsync rather than mutate: branching lets a second prompt start
-    // while the first is still streaming, and the shared mutation observer
-    // only ever tracks the most recent call. The returned promise is per-call,
-    // so an earlier stream still reports its own outcome.
     chat
       .mutateAsync({
         request: {
@@ -136,8 +168,6 @@ export function Composer({
         },
         onNode: () => setSending(false),
         onTitled: (_nodeId, isRoot) => {
-          // A root card's title becomes the conversation title — refresh the
-          // sidebar to pick it up.
           if (isRoot) router.refresh();
         },
       })
@@ -145,7 +175,6 @@ export function Composer({
         toast.error(error.message);
         setPrompt((current) => (current === "" ? text : current));
       })
-      // Also clears when the request failed before any node event arrived.
       .finally(() => setSending(false));
   }
 
@@ -176,7 +205,24 @@ export function Composer({
         </p>
       )}
 
-      {parent ? (
+      {regenerateTarget ? (
+        <div className="flex items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-[11px] text-muted-foreground">
+          <RefreshCw className="size-3 shrink-0 text-primary" />
+          Regenerating
+          <span className="max-w-40 truncate font-medium text-foreground">
+            {regenerateTarget.title ?? regenerateTarget.prompt}
+          </span>
+          — its answer is replaced in place.
+          <button
+            type="button"
+            title="Cancel regeneration (Esc)"
+            onClick={() => setRegenerateNode(null)}
+            className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ) : parent ? (
         <>
           <p className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
             <GitBranch className="size-3" />
@@ -211,8 +257,16 @@ export function Composer({
             e.preventDefault();
             submit();
           }
+          if (e.key === "Escape" && regenerateNodeId) {
+            e.preventDefault();
+            setRegenerateNode(null);
+          }
         }}
-        placeholder="Prompt… (Enter to send, Shift+Enter for a new line)"
+        placeholder={
+          regenerateNodeId
+            ? "Edit the prompt and regenerate, or Esc to cancel"
+            : "Prompt… (Enter to send, Shift+Enter for a new line)"
+        }
         className="max-h-40 min-h-16 resize-none"
       />
 
@@ -249,8 +303,17 @@ export function Composer({
           onClick={submit}
           disabled={!prompt.trim() || sending}
         >
-          <ArrowUp className="size-4" />
-          Send
+          {regenerateNodeId ? (
+            <>
+              <RefreshCw className="size-4" />
+              Regenerate
+            </>
+          ) : (
+            <>
+              <ArrowUp className="size-4" />
+              Send
+            </>
+          )}
         </Button>
       </div>
     </div>
