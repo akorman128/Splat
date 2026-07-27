@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeMenu } from "@/components/theme-menu";
+import { DownloadMenu } from "./DownloadMenu";
 import {
   ChevronsUpDown,
   LogOut,
@@ -221,6 +222,7 @@ export function AppSidebar({
                             <Pencil className="size-4" />
                             Rename
                           </DropdownMenuItem>
+                          <DownloadMenu conversationId={c.id} />
                           <DropdownMenuItem
                             variant="destructive"
                             onClick={() => setPendingDelete(c)}
