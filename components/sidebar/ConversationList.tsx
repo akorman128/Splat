@@ -31,14 +31,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ThemeMenu } from "@/components/theme-menu";
 import { DownloadMenu } from "./DownloadMenu";
+import { ShareDialog } from "./ShareDialog";
 import {
   ChevronsUpDown,
+  Link2,
   LogOut,
   MessageSquare,
   MoreHorizontal,
   Pencil,
   Plus,
   Settings,
+  Share2,
   Trash2,
 } from "lucide-react";
 
@@ -46,6 +49,7 @@ export type ConversationSummary = {
   id: string;
   title: string;
   updated_at: string;
+  share_token: string | null;
 };
 
 export function AppSidebar({
@@ -62,12 +66,15 @@ export function AppSidebar({
     null,
   );
   const [deleting, setDeleting] = useState(false);
+  const [shareTarget, setShareTarget] = useState<ConversationSummary | null>(
+    null,
+  );
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [shown, applyRename] = useOptimistic(
+  const [shown, applyUpdate] = useOptimistic(
     conversations,
-    (list: ConversationSummary[], renamed: ConversationSummary) =>
-      list.map((c) => (c.id === renamed.id ? renamed : c)),
+    (list: ConversationSummary[], updated: ConversationSummary) =>
+      list.map((c) => (c.id === updated.id ? updated : c)),
   );
 
   async function newConversation() {
@@ -120,7 +127,7 @@ export function AppSidebar({
     setRenamingId(null);
     if (!title || title === c.title) return;
     startTransition(async () => {
-      applyRename({ ...c, title });
+      applyUpdate({ ...c, title });
       const supabase = createClient();
       const { error } = await supabase
         .from("conversations")
@@ -200,6 +207,12 @@ export function AppSidebar({
                       >
                         <MessageSquare className="size-4" />
                         <span className="truncate">{c.title}</span>
+                        {c.share_token && (
+                          <Link2
+                            className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+                            aria-label="Shared with a link"
+                          />
+                        )}
                       </SidebarMenuButton>
                       <DropdownMenu>
                         <DropdownMenuTrigger
@@ -221,6 +234,10 @@ export function AppSidebar({
                           <DropdownMenuItem onClick={() => startRename(c)}>
                             <Pencil className="size-4" />
                             Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setShareTarget(c)}>
+                            <Share2 className="size-4" />
+                            {c.share_token ? "Share link" : "Share"}
                           </DropdownMenuItem>
                           <DownloadMenu conversationId={c.id} />
                           <DropdownMenuItem
@@ -264,6 +281,16 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <ShareDialog
+        conversation={shareTarget}
+        onTokenChange={(share_token) => {
+          if (shareTarget) applyUpdate({ ...shareTarget, share_token });
+        }}
+        onOpenChange={(open) => {
+          if (!open) setShareTarget(null);
+        }}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

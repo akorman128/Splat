@@ -83,8 +83,25 @@ context edge that would create one, and `lib/graph/cycle-check.ts` mirrors that
 check client-side for a fast error. Both exist on purpose; the database is the
 one that's authoritative.
 
-**4. RLS scopes everything to `auth.uid()`.** Every table. There is no
-service-role client anywhere in the app.
+**4. RLS scopes everything to `auth.uid()`.** Every table, and there is no
+service-role client anywhere in the app. Public share links are the one
+exception, and they go through a single `security definer` function rather than
+a loosened policy — see below.
+
+### Sharing a conversation
+
+The ⋯ menu on a conversation mints a share link: `/s/<token>`, where the token
+is 18 random bytes minted in a server action and stored on
+`conversations.share_token`. The link *is* the credential — anyone holding it
+gets the canvas read-only — and *Stop sharing* nulls the column, after which the
+URL 404s.
+
+Anonymous readers never touch the tables. `shared_conversation(token)` returns
+the conversation, its nodes (minus `user_id`), context edges and suggestions as
+one jsonb payload, so there is no anon-visible policy that could be used to
+enumerate shared rows. The viewer renders the same canvas with `readOnly` set on
+the graph store: no composer, no card actions, no geometry writes, and tldraw
+itself in `isReadonly` mode.
 
 ### Where things live
 

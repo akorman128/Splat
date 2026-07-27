@@ -18,7 +18,7 @@ export default async function AppLayout({
 
   const { data: conversations } = await supabase
     .from("conversations")
-    .select("id, title, updated_at")
+    .select("id, title, updated_at, share_token")
     .order("updated_at", { ascending: false });
 
   return (

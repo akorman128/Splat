@@ -3,6 +3,7 @@
 import { toast } from "sonner";
 import { Loader2, RotateCcw } from "lucide-react";
 import { useChatStream } from "@/lib/chat-client";
+import { useGraphStore } from "@/lib/store/graph-store";
 
 export function InterruptedNotice({
   nodeId,
@@ -14,6 +15,7 @@ export function InterruptedNotice({
   compact?: boolean;
 }) {
   const chat = useChatStream();
+  const readOnly = useGraphStore((s) => s.readOnly);
   const retrying = chat.isPending;
 
   function retry() {
@@ -44,22 +46,24 @@ export function InterruptedNotice({
         Generation was interrupted
         {errorMessage ? `: ${errorMessage}` : "."}
       </p>
-      <button
-        type="button"
-        disabled={retrying}
-        onPointerDown={stopPointer}
-        onClick={retry}
-        className={`inline-flex items-center gap-1 rounded-md border font-medium hover:bg-accent disabled:opacity-60 ${
-          compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"
-        }`}
-      >
-        {retrying ? (
-          <Loader2 className={compact ? "size-3 animate-spin" : "size-3.5 animate-spin"} />
-        ) : (
-          <RotateCcw className={compact ? "size-3" : "size-3.5"} />
-        )}
-        {retrying ? "Retrying…" : "Retry"}
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          disabled={retrying}
+          onPointerDown={stopPointer}
+          onClick={retry}
+          className={`inline-flex items-center gap-1 rounded-md border font-medium hover:bg-accent disabled:opacity-60 ${
+            compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"
+          }`}
+        >
+          {retrying ? (
+            <Loader2 className={compact ? "size-3 animate-spin" : "size-3.5 animate-spin"} />
+          ) : (
+            <RotateCcw className={compact ? "size-3" : "size-3.5"} />
+          )}
+          {retrying ? "Retrying…" : "Retry"}
+        </button>
+      )}
     </div>
   );
 }

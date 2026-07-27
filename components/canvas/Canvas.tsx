@@ -16,7 +16,7 @@ import { DragPanSelectTool } from "./DragPanSelectTool";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { visibleContextEdges } from "@/lib/graph/context-edges";
 import { createClient } from "@/lib/supabase/client";
-import type { ContextEdgeRow, NodeRow } from "@/lib/types";
+import type { CardNode, ContextEdgeRow } from "@/lib/types";
 
 const shapeUtils = [CardShapeUtil];
 const tools = [DragPanSelectTool];
@@ -82,7 +82,7 @@ function createBoundArrow(
 
 function reconcile(
   editor: Editor,
-  nodes: Record<string, NodeRow>,
+  nodes: Record<string, CardNode>,
   edges: ContextEdgeRow[],
   removing: { current: boolean },
 ) {
@@ -176,6 +176,7 @@ export default function Canvas() {
   const edges = useGraphStore((s) => s.edges);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const focusNodeId = useGraphStore((s) => s.focusNodeId);
+  const readOnly = useGraphStore((s) => s.readOnly);
   const [initialColorScheme] = useState<"dark" | "light">(() =>
     typeof document !== "undefined" &&
     document.documentElement.classList.contains("dark")
@@ -186,9 +187,21 @@ export default function Canvas() {
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const removing = useRef(false);
 
+  // Readonly mode blocks createShape, which is how the canvas is built — so it
+  // is lifted for the reconcile and put back once the shapes are in.
   useEffect(() => {
-    if (editor) reconcile(editor, nodes, edges, removing);
-  }, [editor, nodes, edges]);
+    if (!editor) return;
+    if (!readOnly) {
+      reconcile(editor, nodes, edges, removing);
+      return;
+    }
+    editor.updateInstanceState({ isReadonly: false });
+    try {
+      reconcile(editor, nodes, edges, removing);
+    } finally {
+      editor.updateInstanceState({ isReadonly: true });
+    }
+  }, [editor, nodes, edges, readOnly]);
 
   useEffect(() => {
     if (!editor || !focusNodeId) return;
@@ -323,6 +336,7 @@ export default function Canvas() {
             "shape",
             (shape) => {
               if (removing.current) return;
+              if (useGraphStore.getState().readOnly) return false;
               if (shape.type === CARD_SHAPE_TYPE) {
                 const selected = mountedEditor
                   .getSelectedShapes()
@@ -344,6 +358,7 @@ export default function Canvas() {
             "shape",
             (prev, next) => {
               if (next.type !== CARD_SHAPE_TYPE) return;
+              if (useGraphStore.getState().readOnly) return;
               const prevShape = prev as CardShape;
               const shape = next as CardShape;
               if (
