@@ -10,6 +10,7 @@ import {
 } from "tldraw";
 import { CARD_H, CARD_W } from "@/lib/layout";
 import { CardBody } from "./CardBody";
+import { zoomToCard } from "./zoomToCard";
 
 export const CARD_SHAPE_TYPE = "node-card" as const;
 
@@ -47,6 +48,10 @@ export class CardShapeUtil extends ShapeUtil<CardShape> {
   }
   override canBind() {
     return true;
+  }
+
+  override onDoubleClick(shape: CardShape) {
+    zoomToCard(this.editor, shape.id);
   }
 
   getGeometry(shape: CardShape) {
