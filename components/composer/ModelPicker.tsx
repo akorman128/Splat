@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, ChevronsUpDownIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,41 +14,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/query/api";
+import { queryKeys } from "@/lib/query/keys";
 import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/providers/models";
 
 // Searchable picker over a catalogue provider's model list. Only rendered for
 // providers where the model is the user's choice rather than a pinned id
 // (hasModelCatalog) — OpenRouter serves a few hundred, so this is a filtered
 // dialog rather than another entry in the provider dropdown.
-
-// The catalogue is a few hundred KB and changes on the order of days, so it is
-// fetched once per page load and shared by every composer that opens the
-// dialog. A rejected fetch is evicted so the next open retries.
-const catalogCache = new Map<Provider, Promise<CatalogModel[]>>();
-
-function loadCatalog(provider: Provider): Promise<CatalogModel[]> {
-  const cached = catalogCache.get(provider);
-  if (cached) return cached;
-
-  const pending = fetch(`/api/models?provider=${provider}`)
-    .then(async (res) => {
-      const data = (await res.json().catch(() => ({}))) as {
-        models?: CatalogModel[];
-        error?: string;
-      };
-      if (!res.ok || !data.models) {
-        throw new Error(data.error ?? `Could not load models (${res.status})`);
-      }
-      return data.models;
-    })
-    .catch((err: unknown) => {
-      catalogCache.delete(provider);
-      throw err;
-    });
-
-  catalogCache.set(provider, pending);
-  return pending;
-}
 
 /** Rendering every match at once janks the dialog; matches beyond this are counted, not drawn. */
 const MAX_ROWS = 80;
@@ -80,29 +54,29 @@ export function ModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [models, setModels] = useState<CatalogModel[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  // Fetch on open rather than on mount: the composer is always on screen, and
-  // most sessions never open the picker. `error` is cleared by the opener, not
-  // here — setting state synchronously in an effect body cascades renders.
-  useEffect(() => {
-    if (!open) return;
-    let active = true;
-    loadCatalog(provider).then(
-      (list) => {
-        if (active) setModels(list);
-      },
-      (err: unknown) => {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Could not load models");
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [open, provider]);
+  // `enabled: open` fetches on first open rather than on mount: the composer
+  // is always on screen, and most sessions never open the picker. The
+  // catalogue is a few hundred KB and changes on the order of days, so once it
+  // lands it never goes stale — one fetch per tab, shared by every composer.
+  // A failed attempt leaves no data, which counts as stale, so reopening the
+  // dialog genuinely retries.
+  const {
+    data: models,
+    error,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.models(provider),
+    queryFn: async () => {
+      const body = await apiFetch<{ models?: CatalogModel[] }>(
+        `/api/models?provider=${provider}`,
+      );
+      if (!body.models) throw new Error("Could not load models");
+      return body.models;
+    },
+    enabled: open,
+    staleTime: Infinity,
+  });
 
   const matches = useMemo(() => {
     if (!models) return [];
@@ -120,11 +94,7 @@ export function ModelPicker({
         variant="outline"
         size="sm"
         className="min-w-0 text-xs font-normal"
-        onClick={() => {
-          // Clear a previous failure so reopening genuinely retries the fetch.
-          setError(null);
-          setOpen(true);
-        }}
+        onClick={() => setOpen(true)}
       >
         <span className="max-w-48 truncate">{value}</span>
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -142,7 +112,8 @@ export function ModelPicker({
           <DialogHeader>
             <DialogTitle>Choose a model</DialogTitle>
             <DialogDescription>
-              Every model your {PROVIDER_LABELS[provider]} key can reach.
+              Every model {PROVIDER_LABELS[provider]} serves. A few need their
+              own provider setup or credit on your account.
             </DialogDescription>
           </DialogHeader>
 
@@ -155,8 +126,11 @@ export function ModelPicker({
           />
 
           <ScrollArea className="h-80">
-            {error ? (
-              <p className="p-3 text-sm text-destructive">{error}</p>
+            {/* A failure is held in the cache until the retry resolves, so it
+                is only shown once nothing is in flight — otherwise reopening
+                the dialog reads as still-broken while it is retrying. */}
+            {error && !isFetching ? (
+              <p className="p-3 text-sm text-destructive">{error.message}</p>
             ) : !models ? (
               <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />

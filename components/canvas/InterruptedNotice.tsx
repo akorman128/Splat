@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, RotateCcw } from "lucide-react";
-import { retryChat } from "@/lib/chat-client";
+import { useChatStream } from "@/lib/chat-client";
 
 // The "generation was interrupted" panel and its Retry button, shared by the
 // canvas card and the expanded overlay.
@@ -25,17 +24,15 @@ export function InterruptedNotice({
   errorMessage: string | null;
   compact?: boolean;
 }) {
-  const [retrying, setRetrying] = useState(false);
+  const chat = useChatStream();
+  const retrying = chat.isPending;
 
-  async function retry() {
+  function retry() {
     if (retrying) return;
-    setRetrying(true);
-    try {
-      const { error } = await retryChat(nodeId);
-      if (error) toast.error(error);
-    } finally {
-      setRetrying(false);
-    }
+    chat.mutate(
+      { request: { retryNodeId: nodeId } },
+      { onError: (error) => toast.error(error.message) },
+    );
   }
 
   // On the canvas, swallow the pointer so clicking Retry doesn't start a
