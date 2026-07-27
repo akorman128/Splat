@@ -326,6 +326,7 @@ export default function Canvas() {
   return (
     <div className="absolute inset-0">
       <Tldraw
+        licenseKey={process.env.NEXT_PUBLIC_TLDRAW_KEY}
         hideUi
         colorScheme={initialColorScheme}
         shapeUtils={shapeUtils}
