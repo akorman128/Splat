@@ -2,9 +2,10 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { startTransition, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 import {
   Sidebar,
   SidebarContent,
@@ -13,6 +14,7 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -32,6 +34,8 @@ import {
   ChevronsUpDown,
   LogOut,
   MessageSquare,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Settings,
   Trash2,
@@ -57,13 +61,20 @@ export function AppSidebar({
     null,
   );
   const [deleting, setDeleting] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [shown, applyRename] = useOptimistic(
+    conversations,
+    (list: ConversationSummary[], renamed: ConversationSummary) =>
+      list.map((c) => (c.id === renamed.id ? renamed : c)),
+  );
 
   async function newConversation() {
     setCreating(true);
     const supabase = createClient();
     const { data, error } = await supabase
       .from("conversations")
-      .insert({ title: "New conversation" })
+      .insert({ title: DEFAULT_CONVERSATION_TITLE })
       .select("id")
       .single();
     setCreating(false);
@@ -98,6 +109,32 @@ export function AppSidebar({
     router.refresh();
   }
 
+  function startRename(c: ConversationSummary) {
+    setDraft(c.title);
+    setRenamingId(c.id);
+  }
+
+  function commitRename(c: ConversationSummary) {
+    const title = draft.trim();
+    setRenamingId(null);
+    if (!title || title === c.title) return;
+    startTransition(async () => {
+      applyRename({ ...c, title });
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update({ title })
+        .eq("id", c.id);
+      if (error) {
+        toast.error("Could not rename conversation", {
+          description: error.message,
+        });
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -126,30 +163,75 @@ export function AppSidebar({
           <SidebarGroupLabel>Conversations</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {conversations.length === 0 && (
+              {shown.length === 0 && (
                 <p className="px-2 py-1 text-xs text-muted-foreground">
                   Nothing here yet.
                 </p>
               )}
-              {conversations.map((c) => (
+              {shown.map((c) => (
                 <SidebarMenuItem key={c.id}>
-                  <SidebarMenuButton
-                    isActive={pathname === `/c/${c.id}`}
-                    className="pr-8"
-                    render={<Link href={`/c/${c.id}`} />}
-                  >
-                    <MessageSquare className="size-4" />
-                    <span className="truncate">{c.title}</span>
-                  </SidebarMenuButton>
-                  <SidebarMenuAction
-                    showOnHover
-                    title="Delete conversation"
-                    className="hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setPendingDelete(c)}
-                  >
-                    <Trash2 />
-                    <span className="sr-only">Delete conversation</span>
-                  </SidebarMenuAction>
+                  {renamingId === c.id ? (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        commitRename(c);
+                      }}
+                    >
+                      <SidebarInput
+                        autoFocus
+                        maxLength={120}
+                        aria-label="Conversation title"
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onBlur={() => commitRename(c)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setRenamingId(null);
+                        }}
+                      />
+                    </form>
+                  ) : (
+                    <>
+                      <SidebarMenuButton
+                        isActive={pathname === `/c/${c.id}`}
+                        className="pr-8"
+                        render={<Link href={`/c/${c.id}`} />}
+                      >
+                        <MessageSquare className="size-4" />
+                        <span className="truncate">{c.title}</span>
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <SidebarMenuAction showOnHover title="More" />
+                          }
+                        >
+                          <MoreHorizontal />
+                          <span className="sr-only">
+                            Conversation options
+                          </span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          side="right"
+                          align="start"
+                          className="w-40"
+                          finalFocus={false}
+                        >
+                          <DropdownMenuItem onClick={() => startRename(c)}>
+                            <Pencil className="size-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setPendingDelete(c)}
+                          >
+                            <Trash2 className="size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
