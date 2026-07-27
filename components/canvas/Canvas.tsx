@@ -78,12 +78,32 @@ function createBoundArrow(
   editor.sendToBack([arrowId]);
 }
 
+function isParentChainAncestor(
+  nodes: Record<string, NodeRow>,
+  childId: string,
+  sourceId: string,
+) {
+  const seen = new Set<string>();
+  let current = nodes[childId]?.parent_id ?? null;
+  while (current && !seen.has(current)) {
+    if (current === sourceId) return true;
+    seen.add(current);
+    current = nodes[current]?.parent_id ?? null;
+  }
+  return false;
+}
+
 function reconcile(
   editor: Editor,
   nodes: Record<string, NodeRow>,
   edges: ContextEdgeRow[],
   removing: { current: boolean },
 ) {
+  const contextEdges = edges.filter(
+    (edge) =>
+      nodes[edge.node_id] &&
+      !isParentChainAncestor(nodes, edge.node_id, edge.source_node_id),
+  );
   const hadShapes = editor.getCurrentPageShapeIds().size > 0;
   let createdAny = false;
 
@@ -120,9 +140,7 @@ function reconcile(
         }
       }
 
-      for (const edge of edges) {
-        const child = nodes[edge.node_id];
-        if (!child || edge.source_node_id === child.parent_id) continue;
+      for (const edge of contextEdges) {
         const arrowId = contextArrowId(edge.id);
         if (editor.getShape(arrowId)) continue;
         if (
@@ -144,7 +162,7 @@ function reconcile(
         expected.add(cardShapeId(node.id));
         if (node.parent_id) expected.add(parentArrowId(node.id));
       }
-      for (const edge of edges) expected.add(contextArrowId(edge.id));
+      for (const edge of contextEdges) expected.add(contextArrowId(edge.id));
 
       const stale = [...editor.getCurrentPageShapeIds()].filter(
         (id) => !expected.has(id),
