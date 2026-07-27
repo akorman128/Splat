@@ -49,6 +49,8 @@ async function runStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let nodeId: string | null = null;
+  const createsCard =
+    !("regenerateNodeId" in request) && !("retryNodeId" in request);
 
   const handleEvent = (event: ChatStreamEvent) => {
     const graph = useGraphStore.getState();
@@ -59,6 +61,7 @@ async function runStream(
         streams.clear(event.node.id);
         graph.upsertNode(event.node);
         graph.addEdges(event.edges);
+        if (createsCard) graph.setFocusNode(event.node.id);
         onNode?.(event.node);
         break;
       case "delta":
