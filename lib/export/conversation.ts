@@ -44,11 +44,8 @@ export async function fetchConversation(
 
   const edges = await supabase
     .from("context_edges")
-    .select("*")
-    .in(
-      "node_id",
-      rows.map((node) => node.id),
-    )
+    .select("*, nodes!context_edges_node_id_fkey!inner(conversation_id)")
+    .eq("nodes.conversation_id", conversationId)
     .order("position", { ascending: true });
 
   if (edges.error) throw new Error(edges.error.message);
@@ -56,6 +53,11 @@ export async function fetchConversation(
   return {
     conversation: conversation.data,
     nodes: rows,
-    edges: edges.data ?? [],
+    edges: (edges.data ?? []).map((edge) => ({
+      id: edge.id,
+      node_id: edge.node_id,
+      source_node_id: edge.source_node_id,
+      position: edge.position,
+    })),
   };
 }

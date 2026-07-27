@@ -7,8 +7,10 @@ import type { ConversationExport } from "./conversation";
 import { cardTitle } from "./markdown";
 
 const PADDING = 64;
-// Beyond roughly this area browsers hand back a blank canvas instead of pixels.
+// Beyond roughly this area browsers hand back a blank canvas instead of pixels,
+// and beyond this width or height they do the same however small the area.
 const MAX_PIXELS = 16_000_000;
+const MAX_DIMENSION = 16_384;
 const FONT = `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif`;
 
 const RADIUS = 12;
@@ -125,6 +127,7 @@ function wrap(
       }
       if (line) push(line);
       line = word;
+      if (lines.length >= maxLines) break;
     }
     if (line) push(line);
   }
@@ -339,7 +342,12 @@ export async function toPng(
 
   const width = maxX - minX + PADDING * 2;
   const height = maxY - minY + PADDING * 2;
-  const scale = Math.min(2, Math.sqrt(MAX_PIXELS / (width * height)));
+  const scale = Math.min(
+    2,
+    Math.sqrt(MAX_PIXELS / (width * height)),
+    MAX_DIMENSION / width,
+    MAX_DIMENSION / height,
+  );
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(width * scale));
