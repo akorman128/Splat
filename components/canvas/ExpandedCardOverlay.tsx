@@ -21,43 +21,9 @@ import {
 } from "@/components/ui/dialog";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
-import type { NodeRow } from "@/lib/types";
+import { neighboursOf } from "@/lib/graph/neighbours";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
-
-const byCreation = (a: NodeRow, b: NodeRow) =>
-  a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);
-
-const NO_NEIGHBOURS = {
-  parentId: null,
-  childId: null,
-  prevSiblingId: null,
-  nextSiblingId: null,
-};
-
-// Up/down walk the parent_id lineage the canvas draws as solid arrows. A node
-// can have several children, so down enters the oldest branch and left/right
-// swap between branches at the current depth.
-function neighboursOf(nodes: Record<string, NodeRow>, id: string | null) {
-  const current = id ? nodes[id] : undefined;
-  if (!current) return NO_NEIGHBOURS;
-
-  const all = Object.values(nodes);
-  const siblings = all
-    .filter((n) => n.parent_id === current.parent_id)
-    .sort(byCreation);
-  const children = all
-    .filter((n) => n.parent_id === current.id)
-    .sort(byCreation);
-  const i = siblings.findIndex((n) => n.id === current.id);
-
-  return {
-    parentId: current.parent_id,
-    childId: children[0]?.id ?? null,
-    prevSiblingId: i > 0 ? siblings[i - 1].id : null,
-    nextSiblingId: siblings[i + 1]?.id ?? null,
-  };
-}
 
 function NavButton({
   label,
@@ -69,13 +35,18 @@ function NavButton({
   children: React.ReactNode;
 }) {
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
+  const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
   return (
     <Button
       variant="ghost"
       size="icon-sm"
       title={label}
       disabled={!targetId}
-      onClick={() => targetId && setExpandedNode(targetId)}
+      onClick={() => {
+        if (!targetId) return;
+        setSelectedNode(targetId);
+        setExpandedNode(targetId);
+      }}
     >
       {children}
       <span className="sr-only">{label}</span>
@@ -93,7 +64,7 @@ export function ExpandedCardOverlay() {
     useCardState(expandedNodeId);
 
   const { parentId, childId, prevSiblingId, nextSiblingId } = useMemo(
-    () => neighboursOf(nodes, expandedNodeId),
+    () => neighboursOf(Object.values(nodes), expandedNodeId),
     [nodes, expandedNodeId],
   );
 

@@ -8,14 +8,28 @@ import {
   createShapeId,
   type Editor,
   type TLShapeId,
+  type TLUiOverrides,
 } from "tldraw";
 import "tldraw/tldraw.css";
 import { CARD_SHAPE_TYPE, CardShapeUtil, type CardShape } from "./CardShapeUtil";
+import { DragPanSelectTool } from "./DragPanSelectTool";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { createClient } from "@/lib/supabase/client";
 import type { ContextEdgeRow, NodeRow } from "@/lib/types";
 
 const shapeUtils = [CardShapeUtil];
+const tools = [DragPanSelectTool];
+
+const uiOverrides: TLUiOverrides = {
+  tools(_editor, tools) {
+    return { select: tools.select };
+  },
+  actions(_editor, actions) {
+    delete actions.duplicate;
+    delete actions["unlock-all"];
+    return actions;
+  },
+};
 
 type Geometry = { x: number; y: number; w: number; h: number };
 
@@ -157,6 +171,7 @@ export default function Canvas() {
   const { resolvedTheme } = useTheme();
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
+  const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const [initialColorScheme] = useState<"dark" | "light">(() =>
     typeof document !== "undefined" &&
     document.documentElement.classList.contains("dark")
@@ -170,6 +185,16 @@ export default function Canvas() {
   useEffect(() => {
     if (editor) reconcile(editor, nodes, edges, removing);
   }, [editor, nodes, edges]);
+
+  useEffect(() => {
+    if (!editor || !selectedNodeId) return;
+    const id = cardShapeId(selectedNodeId);
+    if (!editor.getShape(id)) return;
+    const current = editor.getSelectedShapeIds();
+    if (current.length === 1 && current[0] === id) return;
+    editor.select(id);
+    editor.zoomToSelectionIfOffscreen(120, { animation: { duration: 200 } });
+  }, [editor, selectedNodeId]);
 
   const { mutate: persistGeometry } = useMutation({
     mutationFn: async ({
@@ -271,6 +296,8 @@ export default function Canvas() {
         hideUi
         colorScheme={initialColorScheme}
         shapeUtils={shapeUtils}
+        tools={tools}
+        overrides={uiOverrides}
         onMount={(mountedEditor) => {
           mountedEditor.setCurrentTool("select");
 
