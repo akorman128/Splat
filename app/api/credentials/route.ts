@@ -4,6 +4,9 @@ import { encryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
 import { isProvider } from "@/lib/providers/models";
 
+// These handlers read and overwrite stored BYOK keys, so they use getUser()
+// rather than a local claims check: a revoked token must not still reach them.
+
 export async function GET() {
   const supabase = await createClient();
   const {

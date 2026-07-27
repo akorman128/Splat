@@ -15,18 +15,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ContextPicker } from "./ContextPicker";
+import { ModelPicker } from "./ModelPicker";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { submitChat } from "@/lib/chat-client";
 import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition, rootPosition } from "@/lib/layout";
 import {
-  MODELS,
+  PROVIDER_LABELS,
   conversationModelLabel,
+  defaultModel,
+  hasModelCatalog,
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
 import type { CredentialSummary } from "@/lib/types";
+
+/**
+ * A fixed-model provider names its model right in the dropdown. A catalogue
+ * provider cannot — the model is a separate choice, made in the ModelPicker
+ * beside it — so repeating a model id here would just contradict it.
+ */
+function providerLabel(provider: Provider): string {
+  return hasModelCatalog(provider)
+    ? PROVIDER_LABELS[provider]
+    : conversationModelLabel(provider);
+}
 
 export function Composer({
   credentials,
@@ -43,6 +57,8 @@ export function Composer({
 
   const provider = useComposerStore((s) => s.provider);
   const setProvider = useComposerStore((s) => s.setProvider);
+  const model = useComposerStore((s) => s.model);
+  const setModel = useComposerStore((s) => s.setModel);
   const parent = useGraphStore((s) =>
     s.selectedNodeId ? s.nodes[s.selectedNodeId] : undefined,
   );
@@ -108,7 +124,7 @@ export function Composer({
         contextNodeIds,
         prompt: text,
         provider,
-        model: MODELS[provider].conversation,
+        model: model ?? defaultModel(provider),
         canvasX: position.x,
         canvasY: position.y,
       },
@@ -134,7 +150,8 @@ export function Composer({
     return (
       <div className="rounded-xl border bg-card p-4 text-center shadow-lg">
         <p className="text-sm text-muted-foreground">
-          Connect an OpenAI or Anthropic API key to start prompting.
+          Connect an OpenAI, Anthropic, or OpenRouter API key to start
+          prompting.
         </p>
         <Button
           size="sm"
@@ -206,18 +223,23 @@ export function Composer({
           }}
         >
           <SelectTrigger size="sm" className="w-auto text-xs">
-            <SelectValue>
-              {provider ? conversationModelLabel(provider) : "Model"}
-            </SelectValue>
+            <SelectValue>{provider ? providerLabel(provider) : "Model"}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {connectedProviders.map((p) => (
               <SelectItem key={p} value={p} className="text-xs">
-                {conversationModelLabel(p)}
+                {providerLabel(p)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {provider && hasModelCatalog(provider) && (
+          <ModelPicker
+            provider={provider}
+            value={model ?? defaultModel(provider)}
+            onChange={setModel}
+          />
+        )}
         <Button
           size="sm"
           className="ml-auto"

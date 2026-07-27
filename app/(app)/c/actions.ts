@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { authClaims } from "@/lib/supabase/claims";
 
 /**
  * Create the user's first conversation and land on it.
@@ -23,10 +24,8 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function createFirstConversation() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  const claims = await authClaims(supabase);
+  if (!claims) {
     redirect("/login");
   }
 

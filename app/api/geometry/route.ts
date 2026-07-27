@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { authClaims } from "@/lib/supabase/claims";
 
 // Card geometry is normally persisted straight from the browser's Supabase
 // client, debounced (see components/canvas/Canvas.tsx). That path cannot work
@@ -29,10 +30,8 @@ function isGeometryUpdate(value: unknown): value is GeometryUpdate {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  const claims = await authClaims(supabase);
+  if (!claims) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
