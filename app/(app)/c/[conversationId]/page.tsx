@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ConversationView } from "@/components/canvas/ConversationView";
-import type { CredentialSummary } from "@/lib/types";
+import type { CredentialSummary, SkillSummary } from "@/lib/types";
 import type { Provider } from "@/lib/providers/models";
 
 export default async function ConversationPage({
@@ -19,14 +19,16 @@ export default async function ConversationPage({
     .maybeSingle();
   if (!conversation) notFound();
 
-  const [{ data: nodes }, { data: credentials }] = await Promise.all([
-    supabase
-      .from("nodes")
-      .select("*")
-      .eq("conversation_id", conversationId)
-      .order("created_at"),
-    supabase.from("provider_creds").select("provider, key_last4"),
-  ]);
+  const [{ data: nodes }, { data: credentials }, { data: skills }] =
+    await Promise.all([
+      supabase
+        .from("nodes")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at"),
+      supabase.from("provider_creds").select("provider, key_last4"),
+      supabase.from("skills").select("id, name").order("name"),
+    ]);
 
   const nodeIds = (nodes ?? []).map((n) => n.id);
   const [{ data: edges }, { data: suggestions }] = nodeIds.length
@@ -46,6 +48,7 @@ export default async function ConversationPage({
         provider: c.provider as Provider,
         key_last4: c.key_last4,
       })) satisfies CredentialSummary[]}
+      skills={(skills ?? []) satisfies SkillSummary[]}
     />
   );
 }

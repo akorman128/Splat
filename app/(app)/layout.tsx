@@ -16,15 +16,19 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  const { data: conversations } = await supabase
-    .from("conversations")
-    .select("id, title, updated_at, share_token")
-    .order("updated_at", { ascending: false });
+  const [{ data: conversations }, { data: skills }] = await Promise.all([
+    supabase
+      .from("conversations")
+      .select("id, title, updated_at, share_token")
+      .order("updated_at", { ascending: false }),
+    supabase.from("skills").select("id, name").order("name"),
+  ]);
 
   return (
     <SidebarProvider>
       <AppSidebar
         conversations={conversations ?? []}
+        skills={skills ?? []}
         email={claims.email ?? "account"}
       />
       <main className="relative flex h-dvh flex-1 flex-col overflow-hidden">

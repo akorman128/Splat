@@ -24,6 +24,7 @@ export interface ProviderAdapter {
     apiKey: string;
     model: string;
     messages: ChatMessage[];
+    system?: string;
   }): AsyncGenerator<StreamEvent>;
 
   generateFollowups(opts: {

@@ -25,11 +25,17 @@ export const anthropicAdapter: ProviderAdapter = {
     }
   },
 
-  async *streamChat({ apiKey, model, messages }): AsyncGenerator<StreamEvent> {
+  async *streamChat({
+    apiKey,
+    model,
+    messages,
+    system,
+  }): AsyncGenerator<StreamEvent> {
     const stream = client(apiKey).messages.stream({
       model,
       max_tokens: MAX_OUTPUT_TOKENS,
       messages,
+      ...(system ? { system } : {}),
     });
 
     for await (const event of stream) {
