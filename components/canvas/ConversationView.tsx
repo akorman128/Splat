@@ -74,7 +74,10 @@ export function ConversationView({
       {hasNodes ? (
         <>
           <Canvas />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center p-4">
+          <div
+            data-composer-bar
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center p-4"
+          >
             <div className="w-full max-w-2xl">
               {composerHidden && (
                 <div className="flex justify-end">

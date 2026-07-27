@@ -19,6 +19,7 @@ import type { ContextEdgeRow, NodeRow } from "@/lib/types";
 
 const shapeUtils = [CardShapeUtil];
 const tools = [DragPanSelectTool];
+const options = { createTextOnCanvasDoubleClick: false };
 
 const uiOverrides: TLUiOverrides = {
   tools(_editor, tools) {
@@ -331,6 +332,7 @@ export default function Canvas() {
         colorScheme={initialColorScheme}
         shapeUtils={shapeUtils}
         tools={tools}
+        options={options}
         overrides={uiOverrides}
         onMount={(mountedEditor) => {
           mountedEditor.setCurrentTool("select");

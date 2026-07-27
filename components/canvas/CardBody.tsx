@@ -11,7 +11,19 @@ import { SuggestionRail } from "./SuggestionRail";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
 
-const stop = (e: React.PointerEvent | React.WheelEvent) => e.stopPropagation();
+const stop = (e: React.PointerEvent) => e.stopPropagation();
+
+// tldraw reads wheel events off a native listener on the canvas, so React's
+// stopPropagation lands too late to stop the camera panning over the card.
+const keepScrollLocal = (element: HTMLDivElement | null) => {
+  if (!element) return;
+  const onWheel = (event: WheelEvent) => {
+    if (event.ctrlKey || event.metaKey) return;
+    if (element.scrollHeight > element.clientHeight) event.stopPropagation();
+  };
+  element.addEventListener("wheel", onWheel);
+  return () => element.removeEventListener("wheel", onWheel);
+};
 
 export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const { node, responseText, contextCount, isStreaming, isError } =
@@ -96,9 +108,9 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
         </div>
 
         <div
+          ref={keepScrollLocal}
           className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
           onPointerDown={stop}
-          onWheel={stop}
         >
           {responseText ? (
             <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto prose-pre:text-xs">
