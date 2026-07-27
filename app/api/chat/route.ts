@@ -36,6 +36,41 @@ type RegenerateBody = {
   model?: string;
 };
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type KeyResult =
+  | { ok: true; apiKey: string }
+  | { ok: false; status: number; error: string };
+
+// Resolved before the node is written, so a missing or undecryptable key can
+// never blank the answer a regenerate was about to replace.
+async function resolveApiKey(
+  supabase: SupabaseServerClient,
+  provider: Provider,
+): Promise<KeyResult> {
+  const { data: cred } = await supabase
+    .from("provider_creds")
+    .select("encrypted_key")
+    .eq("provider", provider)
+    .maybeSingle();
+  if (!cred) {
+    return {
+      ok: false,
+      status: 422,
+      error: `No ${provider} API key connected. Add one in Settings.`,
+    };
+  }
+  try {
+    return { ok: true, apiKey: decryptSecret(cred.encrypted_key) };
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      error: `Stored ${provider} key could not be decrypted. Re-add it in Settings.`,
+    };
+  }
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -57,6 +92,7 @@ export async function POST(request: Request) {
   let contextIds: string[];
   let conversationNodes: NodeRow[];
   let conversationEdges: ContextEdgeRow[];
+  let apiKey: string;
 
   const rerunNodeId = body.retryNodeId ?? body.regenerateNodeId;
 
@@ -136,6 +172,18 @@ export async function POST(request: Request) {
     conversationEdges = (edgesRes.data ?? []) as unknown as ContextEdgeRow[];
     nodeEdges = ownEdgesRes.data ?? [];
     contextIds = nodeEdges.map((e) => e.source_node_id);
+
+    const rerunKey = await resolveApiKey(
+      supabase,
+      (rerunFields.provider ?? existing.provider) as Provider,
+    );
+    if (!rerunKey.ok) {
+      return NextResponse.json(
+        { error: rerunKey.error },
+        { status: rerunKey.status },
+      );
+    }
+    apiKey = rerunKey.apiKey;
 
     const { data: reset, error: resetError } = await supabase
       .from("nodes")
@@ -243,6 +291,12 @@ export async function POST(request: Request) {
 
     contextIds = topoOrder(contextNodeIds, conversationNodes, conversationEdges);
 
+    const newKey = await resolveApiKey(supabase, provider);
+    if (!newKey.ok) {
+      return NextResponse.json({ error: newKey.error }, { status: newKey.status });
+    }
+    apiKey = newKey.apiKey;
+
     const { data: created, error: createError } = await supabase
       .from("nodes")
       .insert({
@@ -288,43 +342,6 @@ export async function POST(request: Request) {
   }
 
   const provider = node.provider as Provider;
-  const { data: cred } = await supabase
-    .from("provider_creds")
-    .select("encrypted_key")
-    .eq("provider", provider)
-    .maybeSingle();
-  if (!cred) {
-    await supabase
-      .from("nodes")
-      .update({
-        status: "error",
-        error_message: `No ${provider} API key connected`,
-      })
-      .eq("id", node.id);
-    return NextResponse.json(
-      { error: `No ${provider} API key connected. Add one in Settings.` },
-      { status: 422 },
-    );
-  }
-  let apiKey: string;
-  try {
-    apiKey = decryptSecret(cred.encrypted_key);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : "unknown error";
-    await supabase
-      .from("nodes")
-      .update({
-        status: "error",
-        error_message: `Stored ${provider} key could not be decrypted: ${detail}`,
-      })
-      .eq("id", node.id);
-    return NextResponse.json(
-      {
-        error: `Stored ${provider} key could not be decrypted. Re-add it in Settings.`,
-      },
-      { status: 500 },
-    );
-  }
 
   const nodesById = new Map(conversationNodes.map((n) => [n.id, n]));
   const messages: ChatMessage[] = [];

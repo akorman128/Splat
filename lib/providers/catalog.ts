@@ -109,12 +109,9 @@ async function catalogue(provider: CatalogProvider): Promise<Catalogue> {
     return cache.fresh;
   }
 
-  if (
-    cache.fresh &&
-    cache.failure &&
-    now - cache.failure.at < FAILURE_BACKOFF_MS
-  ) {
-    return cache.fresh;
+  if (cache.failure && now - cache.failure.at < FAILURE_BACKOFF_MS) {
+    if (cache.fresh) return cache.fresh;
+    throw cache.failure.error;
   }
 
   if (!cache.inFlight) {
