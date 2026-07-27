@@ -219,17 +219,20 @@ function followupsFallback(model: string | undefined): string | null {
 
 const MODEL_UNAVAILABLE_PATTERNS = [
   /model[_ ]not[_ ]found/i,
-  /no (?:endpoints?|allowed providers?)[^.]*found/i,
+  /no (?:endpoints?|allowed providers?)\b/i,
   /not a valid model/i,
   /(?:unknown|invalid|unsupported) model/i,
   /does not exist or you do not have access/i,
 ];
 
+// OpenRouter answers an id it does not serve with a 400, not a 404, and the
+// wording varies by account and by routing rule — so any 400 is worth one
+// retry on the card's own model, and the patterns catch the other statuses.
 function isModelUnavailable(err: unknown): boolean {
   if (err instanceof OpenAI.NotFoundError) return true;
-  if (!(err instanceof OpenAI.BadRequestError)) return false;
-  if (err.code === "model_not_found") return true;
-  return MODEL_UNAVAILABLE_PATTERNS.some((pattern) =>
-    pattern.test(err.message),
+  if (err instanceof OpenAI.BadRequestError) return true;
+  return (
+    err instanceof Error &&
+    MODEL_UNAVAILABLE_PATTERNS.some((pattern) => pattern.test(err.message))
   );
 }
