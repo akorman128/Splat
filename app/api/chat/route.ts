@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { decryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
-import { MODELS, isProvider, type Provider } from "@/lib/providers/models";
+import {
+  MODELS,
+  hasModelCatalog,
+  isProvider,
+  type Provider,
+} from "@/lib/providers/models";
+import { isKnownOpenRouterModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
 import { topoOrder } from "@/lib/graph/topo-order";
 import type { ChatMessage } from "@/lib/providers/types";
@@ -143,9 +149,16 @@ export async function POST(request: Request) {
     // node row existed, so the failure path created a card, deleted it again,
     // and handed the caller a raw Postgres "duplicate key value" string.
     const contextNodeIds = [...new Set(rawContextNodeIds)];
-    if (model !== MODELS[provider].conversation) {
+    // Providers with a pinned tier accept exactly that id. Catalogue providers
+    // accept anything the catalogue currently lists — checked here, before a
+    // node row exists, so a typo is a 400 on the composer rather than a card
+    // that has to be created only to immediately fail.
+    const modelAllowed = hasModelCatalog(provider)
+      ? await isKnownOpenRouterModel(model)
+      : model === MODELS[provider].conversation;
+    if (!modelAllowed) {
       return NextResponse.json(
-        { error: `Unknown model for ${provider}` },
+        { error: `Unknown model for ${provider}: ${model}` },
         { status: 400 },
       );
     }

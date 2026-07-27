@@ -32,10 +32,15 @@ export interface ProviderAdapter {
    * Structured "title + exactly 3 follow-ups" call on the utility model.
    * Not streamed; strict schema; falls back one tier up (the conversation
    * model) if the utility model is unavailable, logging the substitution.
+   *
+   * `model` is the id the card itself was generated with. Providers with a
+   * pinned model tier ignore it; catalogue providers use it as the fallback
+   * target, since it is the one id this key is known to be able to reach.
    */
   generateFollowups(opts: {
     apiKey: string;
     prompt: string;
     response: string;
+    model?: string;
   }): Promise<StructuredFollowups>;
 }

@@ -63,6 +63,9 @@ export async function POST(request: Request) {
       apiKey: decryptSecret(cred.encrypted_key),
       prompt: node.prompt,
       response: node.response,
+      // The card's own model, so a catalogue provider has a known-reachable
+      // id to fall back to if its utility model is unavailable to this key.
+      model: node.model,
     });
   } catch (err) {
     return NextResponse.json(
