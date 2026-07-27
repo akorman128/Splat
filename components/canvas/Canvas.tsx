@@ -14,6 +14,7 @@ import "tldraw/tldraw.css";
 import { CARD_SHAPE_TYPE, CardShapeUtil, type CardShape } from "./CardShapeUtil";
 import { DragPanSelectTool } from "./DragPanSelectTool";
 import { useGraphStore } from "@/lib/store/graph-store";
+import { visibleContextEdges } from "@/lib/graph/context-edges";
 import { createClient } from "@/lib/supabase/client";
 import type { ContextEdgeRow, NodeRow } from "@/lib/types";
 
@@ -79,32 +80,13 @@ function createBoundArrow(
   editor.sendToBack([arrowId]);
 }
 
-function isParentChainAncestor(
-  nodes: Record<string, NodeRow>,
-  childId: string,
-  sourceId: string,
-) {
-  const seen = new Set<string>();
-  let current = nodes[childId]?.parent_id ?? null;
-  while (current && !seen.has(current)) {
-    if (current === sourceId) return true;
-    seen.add(current);
-    current = nodes[current]?.parent_id ?? null;
-  }
-  return false;
-}
-
 function reconcile(
   editor: Editor,
   nodes: Record<string, NodeRow>,
   edges: ContextEdgeRow[],
   removing: { current: boolean },
 ) {
-  const contextEdges = edges.filter(
-    (edge) =>
-      nodes[edge.node_id] &&
-      !isParentChainAncestor(nodes, edge.node_id, edge.source_node_id),
-  );
+  const contextEdges = visibleContextEdges(Object.values(nodes), edges);
   const hadShapes = editor.getCurrentPageShapeIds().size > 0;
   let createdAny = false;
 
