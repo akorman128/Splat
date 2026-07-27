@@ -101,7 +101,7 @@ export function AppSidebar({
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/");
+    router.push("/login");
     router.refresh();
   }
 
@@ -171,7 +171,7 @@ export function AppSidebar({
                 </DropdownMenuItem>
                 <ThemeMenu />
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={signOut}>
+                <DropdownMenuItem onClick={signOut}>
                   <LogOut className="size-4" />
                   Sign out
                 </DropdownMenuItem>
