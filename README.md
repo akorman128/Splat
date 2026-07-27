@@ -1,70 +1,155 @@
-# 🫟 Splat — a graph-native AI chat canvas
+# 🫟 Splat
 
-Instead of one linear transcript, every prompt/response pair is a **card** on an
-infinite [tldraw](https://tldraw.dev) canvas. Cards are linked as a DAG, and you
-control exactly which ancestor cards are sent as context with each new prompt.
+**Chat with an LLM on an infinite canvas instead of in a scrolling transcript.**
 
-- **Supabase** owns graph semantics (nodes, edges, suggestions, auth, RLS).
-- **tldraw** owns geometry only — card shapes hold a `nodeId` and nothing else;
-  positions are persisted back to `nodes.canvas_*`, debounced.
-- **All LLM calls originate in server route handlers.** Provider SDKs and keys
-  are never imported by client code (`import "server-only"` enforces this at
-  build time). The client's only path to a model is `fetch` against `/api/*`.
-- **BYOK**: each user connects their own OpenAI and/or Anthropic API key after
-  sign-in. Keys are verified against the provider's models endpoint, encrypted
-  at rest (AES-256-GCM), and decrypted only inside route handlers.
+Every prompt/response pair is a **card**. Cards link into a directed graph. When
+you write a new prompt, you pick — with checkboxes — exactly which ancestor
+cards get sent as context.
 
-## Stack
-
-Next.js 16 (App Router, Turbopack) · React 19 · Tailwind v4 + shadcn/ui
-(Base UI generation) · tldraw 5 · Supabase (Postgres, Auth, RLS) ·
-zustand · react-markdown · openai + @anthropic-ai/sdk (server-only).
-
-## Setup
-
-```sh
-npm install
-cp .env.example .env.local   # then fill in:
+```mermaid
+graph TD
+  A["How does RLS work?"] --> B["Show me a policy"]
+  A --> C["What about service keys?"]
+  B --> D["Now for multi-tenant"]
+  C -."borrowed as context".-> D
 ```
 
-| Variable | What it is |
+That's the whole idea, and it fixes a specific thing that's wrong with chat UIs:
+a linear thread makes you choose between polluting your context with a tangent
+and losing the tangent entirely. On a graph you just branch. Explore three
+approaches side by side, and pull context from whichever branches actually
+turned out to be relevant.
+
+**BYOK** — you connect your own OpenAI, Anthropic, or OpenRouter key. There's no
+hosted tier and no server-side account with a balance. Your keys are encrypted
+at rest and only ever decrypted inside a route handler.
+
+---
+
+## Run it locally
+
+You'll need Node 20+, a free [Supabase](https://supabase.com) project, and an
+API key from at least one provider.
+
+```sh
+git clone https://github.com/akorman128/Splat.git
+cd Splat
+npm install
+cp .env.example .env.local
+```
+
+Fill in three required values in `.env.local`:
+
+| Variable | Where it comes from |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The project's publishable (anon) key |
-| `APP_ENCRYPTION_KEY` | 32 bytes base64 (`openssl rand -base64 32`). Encrypts BYOK provider keys at rest. Server-only. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase dashboard → Project Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page — the publishable (anon) key |
+| `APP_ENCRYPTION_KEY` | Generate one: `openssl rand -base64 32` |
 
-### Database
+(`.env.example` also lists three optional vars: OpenRouter attribution headers
+and a tldraw license key to drop the canvas watermark. Skip them.)
 
-Migrations live in `supabase/migrations/`. Apply with the Supabase CLI:
+Push the schema, then start:
 
 ```sh
 supabase link --project-ref <project-ref>
 supabase db push
+npm run dev          # → http://localhost:3000
 ```
 
-This creates `profiles`, `provider_creds`, `conversations`, `nodes`,
-`context_edges`, `suggestions` — all with RLS scoping rows to `auth.uid()` —
-plus a recursive-CTE trigger that rejects context edges that would create a
-cycle, and a trigger that auto-creates a profile row on signup.
+Sign up with email + password (auto-confirm is on, so no SMTP needed), paste a
+provider key on the onboarding screen, and you're in. Google OAuth is wired up
+but needs a Google Cloud client configured under *Authentication → Providers*
+before that button does anything.
 
-### Auth configuration (Supabase dashboard)
+## How it fits together
 
-- **Email + password** works out of the box (email auto-confirm is enabled on
-  the linked project so no SMTP is needed).
-- **Google OAuth** needs a Google Cloud OAuth client: enable the Google
-  provider under *Authentication → Providers* and paste the client id/secret.
-  Until then the "Continue with Google" button will return a provider error.
+Four invariants hold the design together. If you're changing something and one
+of these gets in your way, that's worth an issue — please don't just route
+around it.
 
-### Run
+**1. Supabase owns meaning, tldraw owns geometry.** A tldraw shape holds a
+`nodeId` and nothing else. Every piece of real state — prompt, response, model,
+edges, status — lives in Postgres. Card positions flow the other way, debounced
+back into `nodes.canvas_*`. This is why a reload is cheap and why the canvas
+library stays swappable.
 
-```sh
-npm run dev     # http://localhost:3000
-```
+**2. Every LLM call starts on the server.** Provider SDKs and API keys are never
+imported by client code — `import "server-only"` fails the build if you try. The
+client's only route to a model is `fetch` against `/api/*`.
+
+**3. The graph can't cycle.** A recursive-CTE trigger in Postgres rejects any
+context edge that would create one, and `lib/graph/cycle-check.ts` mirrors that
+check client-side for a fast error. Both exist on purpose; the database is the
+one that's authoritative.
+
+**4. RLS scopes everything to `auth.uid()`.** Every table. There is no
+service-role client anywhere in the app.
+
+### Where things live
+
+| Path | What's in it |
+| --- | --- |
+| `app/api/chat/` | The main event: validates the model, builds the message list, streams |
+| `app/api/{credentials,models,suggestions,geometry}/` | Key management, OpenRouter catalogue, titles + chips, position writes |
+| `lib/providers/` | One adapter per provider behind a 3-method interface |
+| `lib/graph/` | Pure functions: ancestors, descendants, topological order, cycle check |
+| `lib/store/` | zustand: composer state, graph cache, in-flight stream text |
+| `components/canvas/` | tldraw shape util, card rendering, overlay, keyboard nav |
+| `components/composer/` | Prompt box, provider/model picker, context checkboxes |
+| `supabase/migrations/` | Schema, RLS policies, triggers |
+
+Tables: `profiles`, `provider_creds`, `conversations`, `nodes`, `context_edges`,
+`suggestions`.
+
+## Good first contributions
+
+There's no CONTRIBUTING.md yet and issues are sparse — so here are real,
+specific things worth doing, roughly by size. Claim one by opening an issue.
+
+**Start here**
+
+- **Tests for `lib/graph/`.** There is currently *no* test setup at all, and
+  these five files are pure functions with zero I/O — the ideal place to start
+  one. Wire up Vitest, cover `topoOrder` and `validateContextSelection`, and
+  you've given the project its first safety net.
+- **A real tokenizer.** `lib/tokens.ts` is `text.length / 4`. The context picker
+  shows those numbers to users as if they mean something. `js-tiktoken` or
+  similar would make the running total honest.
+- **Card resize.** `canvas_w/h` are persisted on every node and currently always
+  hold the defaults — resizing was disabled outright. The plumbing is already
+  there.
+
+**Meatier**
+
+- **Add a provider.** `ProviderAdapter` in `lib/providers/types.ts` is three
+  methods: `verifyKey`, `streamChat`, `generateFollowups`. A generic
+  OpenAI-compatible adapter (Ollama, LM Studio, vLLM, any base URL) would let
+  people run Splat fully local. Note the `provider` check constraint in the
+  schema needs a migration too — see
+  `20260726000004_openrouter_provider.sql` for the pattern.
+- **Export a conversation.** Walk the graph with `lib/graph/topo-order.ts` and
+  emit Markdown. Obvious feature, self-contained, no new concepts.
+- **Search across cards.** Postgres full-text over `nodes.prompt/response`,
+  scoped by RLS, with results that pan the camera to the hit.
+- **Re-parent a card, or edit its context after the fact.** Right now a card's
+  context set is frozen at creation. The cycle-check trigger already guards the
+  write, so the hard part is the interaction design, not the data model.
+
+**Ambitious**
+
+- **Mobile.** The canvas is desktop-only today. `hooks/use-mobile.ts` and the
+  sidebar already respond; the canvas and composer don't.
+- **Multiplayer.** tldraw has the primitives and Supabase has realtime. Nobody
+  has tried.
+
+Bug reports and "this confused me" issues are genuinely useful too — much of the
+UI has been exercised by roughly one person.
 
 ## Model configuration
 
-`lib/providers/models.ts` is the **only** place model ids live — a
-`role → model id` map per provider:
+`lib/providers/models.ts` is the **only** place model ids live, as a
+`role → model id` map:
 
 | Provider | Conversation model | Utility model |
 | --- | --- | --- |
@@ -72,108 +157,91 @@ npm run dev     # http://localhost:3000
 | Anthropic | `claude-opus-5` | `claude-haiku-4-5` |
 | OpenRouter | any catalogue id (default `openrouter/auto`) | `google/gemini-2.5-flash-lite` |
 
-The composer's first dropdown selects the **provider**, not the model. OpenAI
-and Anthropic expose exactly one conversation model each — the pinned id above
-— and `/api/chat` rejects anything else. OpenRouter is the exception: it is a
-*catalogue* provider (`CATALOG_PROVIDERS`), so a second picker appears next to
-it listing the live catalogue from `/api/models`, and any id that catalogue
-currently serves is accepted. Either way the response is streamed. Validation
-fails *open*: if the catalogue cannot be reached at all, any plausibly-shaped
-`vendor/model` id is let through rather than blocking a send on our own outage.
+The composer's first dropdown picks a **provider**, not a model. OpenAI and
+Anthropic each expose exactly one conversation model — the pinned id above — and
+`/api/chat` rejects anything else. OpenRouter is the exception: it's a
+*catalogue* provider (`CATALOG_PROVIDERS`), so a second picker appears listing
+the live catalogue from `/api/models`, and any id it currently serves is
+accepted.
 
-The catalogue is OpenRouter's **public** listing, so it is not scoped to the
-key: a handful of ids need their own upstream provider setup or account credit
-and will fail at send time. It also carries each model's context window and,
-where the provider declares one, its output ceiling. The adapter sizes
-`max_tokens` from both of those *and* the estimated prompt size, since a
-declared output cap does not exempt a model from its context window — a fixed
-budget is only safe for a pinned model. Where the catalogue declares neither
-(including `openrouter/auto`, whose figures are the union across everything it
-may route to) the request goes out with no `max_tokens` and OpenRouter applies
-the model's own default.
+Two behaviours worth knowing before you touch this code:
 
-The utility model handles the structured "title + exactly 3 suggestions" call
-(strict JSON schema, low output budget) and is fixed per provider regardless of
-the conversation model. If it is unavailable on an account, the adapter falls
-back one tier up and logs it — for a catalogue provider that means the card's
-own model, `openrouter/auto` included, since the default selection would
-otherwise have no fallback at all.
+- **Validation fails open.** If the catalogue is unreachable, any plausibly
+  shaped `vendor/model` id is let through rather than blocking a send on our own
+  outage.
+- **`max_tokens` is computed, not fixed.** The adapter sizes it from the
+  catalogue's context window, the declared output ceiling, *and* the estimated
+  prompt size — a declared output cap doesn't exempt a model from its context
+  window. Where the catalogue declares neither (including `openrouter/auto`,
+  whose numbers are the union across everything it might route to) the request
+  goes out with no `max_tokens` and OpenRouter applies the model's default.
 
-## Verification click-paths (per build step)
+The **utility model** handles one structured call — "title + exactly 3
+suggestions", strict JSON schema, small output budget — and is fixed per
+provider regardless of the conversation model. If it's unavailable on an
+account the adapter falls back one tier up and logs it.
 
-1. **Shell + auth** — Open `/`, click *Sign in*, create an account with email +
-   password. You land in the app shell: collapsible sidebar (conversations,
-   New conversation, account menu with Settings/Sign out).
-2. **Migrations + RLS** — Sign up a second account: it sees no conversations
-   from the first (RLS). `supabase db push` output lists both migrations.
-3. **Credentials** — After first sign-in you land on `/onboarding`. Paste an
-   OpenAI or Anthropic key → *Save*: the key is round-tripped against the
-   provider's models endpoint (a bogus key is rejected with the provider's
-   message), then stored encrypted; the form shows `Connected · ····last4`.
-   Rotate/remove later under `/settings`.
-4. **Streaming** — In an empty conversation, type a prompt and press Enter.
-   The pane becomes the canvas with one card; the response streams token by
-   token into the card body. (Streamed text lives in a client store; the
-   tldraw shape never sees intermediate tokens. The server flushes partials to
-   Supabase every ~2s / 500 chars.)
-5. **Canvas + persistence** — Drag a card, reload: the position survives
-   (debounced write to `nodes.canvas_*`).
-6. **Parent/child + arrows** — Click a suggestion chip to the right of a card:
-   a child card is created below-right of its parent with a solid arrow that
-   re-routes as you move either card.
-7. **Suggestions + titles** — When a response completes, the utility model
-   fills in the card title (≤6 words) and three chips. Both survive reload;
-   a taken chip renders checked. A root card's title becomes the conversation
-   title in the sidebar, but only while that conversation is still untitled.
-   Rename one yourself from its sidebar ⋯ menu (Enter saves, Esc discards):
-   the auto-titler leaves your title alone from then on.
-8. **Context picker** — Select a card, and the composer shows every ancestor
-   with a checkbox, an approximate token count, and a running total (full
-   path to root checked by default). Uncheck/check ancestors, submit, then
-   select the new card: non-parent context sources render as **dashed**
-   arrows; the parent edge stays solid. The sent set is stored in
-   `context_edges` (topological order, oldest first).
-9. **Overlay + errors** — Click a card's expand icon: full-pane overlay above
-   the still-mounted canvas; Esc (or ✕) returns instantly with the camera
-   preserved. Kill the dev server mid-stream and reload: the partial response
-   is still on the card with an inline "generation was interrupted" notice and
-   a *Retry* button (retry is a fresh attempt, never a splice).
+## Gotchas
 
-Quality-bar checks that were run: `npx tsc --noEmit` and `npm run lint` are
-clean; the client bundle greps clean for provider hostnames and key prefixes
-(`grep -rE "api\.openai\.com|api\.anthropic\.com|sk-ant-|sk-proj-" .next/static/`);
-Enter submits / Shift+Enter newline / Esc closes the overlay.
+Things that cost real debugging time. Worth reading before you file a bug
+against them.
 
-## Where this deviates from the spec
-
-- **Utility-call temperature** — §3.7 asks for temperature near zero. Current
-  reasoning models on both providers reject non-default sampling params, so
-  temperature is omitted entirely; determinism is approximated with strict
-  JSON schemas and low output budgets instead.
-- **Cards are fixed-size** — the card view is fixed width per §3.3; resizing
-  is disabled outright (expanded view is the overlay). `canvas_w/h` are
-  persisted but currently always the defaults.
-- **tldraw v5 API drift** (§2 version check): shape props are registered via
-  TypeScript module augmentation (`TLGlobalShapePropsMap`), indicators are
+- **tldraw v5 drifted from its docs.** Shape props register via TypeScript
+  module augmentation (`TLGlobalShapePropsMap`), indicators are
   `getIndicatorPath(): Path2D`, and `editor.store.listen` never delivered
   entries in this build — geometry persistence uses
   `editor.sideEffects.registerAfterChangeHandler("shape", …)` instead.
-- **Next 16** renamed `middleware.ts` → `proxy.ts` (exported function
-  `proxy`); the Supabase session-refresh middleware lives there.
-- **Suggestion regeneration** — suggestions are generated eagerly when a node
-  completes. If that one utility call fails (e.g. network), the card simply
-  has no chips; there is no retry-on-reload sweep.
-- **Anthropic safety refusals** are surfaced as a card error (with Retry)
-  rather than silently re-running on a fallback model — in a BYOK app the
-  user's model choice is explicit, and the card footer reports the model that
-  actually ran.
-- **Edges are read-only by construction**: the tldraw UI is hidden (`hideUi`,
-  which also disables tool keyboard shortcuts), so the arrow tool is
-  unreachable; arrows are created programmatically, locked, and a
-  before-delete side effect vetoes deletion of any shape.
+- **Next 16 renamed `middleware.ts` → `proxy.ts`** (exported function `proxy`).
+  The Supabase session-refresh middleware lives there. This repo tracks Next 16
+  closely and its APIs differ from older tutorials — see `CLAUDE.md`.
+- **Utility calls send no temperature.** Current reasoning models on both
+  providers reject non-default sampling params. Determinism comes from strict
+  JSON schemas and low output budgets instead.
+- **Edges are read-only by construction.** The tldraw UI is hidden (`hideUi`,
+  which also kills tool keyboard shortcuts), so the arrow tool is unreachable.
+  Arrows are created programmatically, locked, and a before-delete side effect
+  vetoes deleting any shape.
+- **Streaming text never touches the tldraw store.** It lives in a client store
+  (`lib/store/stream-store.ts`) and the server flushes partials to Supabase every
+  ~2s / 500 chars. Kill the dev server mid-stream and reload: the partial
+  survives with an "interrupted" notice and a Retry button. Retry is always a
+  fresh attempt, never a splice.
+- **Suggestions are generated once, eagerly.** If that utility call fails, the
+  card just has no chips — there's no retry-on-reload sweep. (Fixing this is a
+  fine first contribution.)
 
-## Out of scope (per spec §9)
+## Sending a pull request
 
-Real-time multiplayer, sharing/permissions, mobile layout, file uploads, tool
-use inside conversations, billing, node deletion/re-parenting UI, editing a
-node's context after creation, dark mode polish.
+There's no CI yet, so please run both locally — a PR that adds CI would be very
+welcome:
+
+```sh
+npx tsc --noEmit
+npm run lint
+```
+
+Then click through whatever you touched. The paths most likely to break:
+streaming into a card, dragging a card and reloading to confirm the position
+stuck, clicking a suggestion chip to spawn a child, and unchecking an ancestor
+in the context picker (non-parent sources render as **dashed** arrows, the
+parent edge stays solid).
+
+If your change goes anywhere near provider code, confirm nothing leaked into the
+client bundle:
+
+```sh
+npm run build
+grep -rE "api\.openai\.com|api\.anthropic\.com|sk-ant-|sk-proj-" .next/static/
+```
+
+That should return nothing.
+
+House style: no comments unless the code genuinely can't explain itself. Match
+what's around you.
+
+## License
+
+⚠️ **This repo does not have a license file yet**, which technically means
+default copyright — you can read the code but you can't safely fork or ship it.
+This is being sorted out; until it is, treat anything you contribute as
+contingent on the license that lands.
