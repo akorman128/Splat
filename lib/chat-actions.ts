@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { submitChat } from "@/lib/chat-client";
-import { MODELS } from "@/lib/providers/models";
+import { defaultModel } from "@/lib/providers/models";
 import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition } from "@/lib/layout";
 import type { SuggestionRow } from "@/lib/types";
@@ -22,7 +22,7 @@ export async function submitSuggestion(
   if (!parent || !graph.conversationId) {
     return { error: "Card not loaded" };
   }
-  const provider = useComposerStore.getState().provider;
+  const { provider, model } = useComposerStore.getState();
   if (!provider) {
     return { error: "Connect a provider API key first (Settings)." };
   }
@@ -50,7 +50,9 @@ export async function submitSuggestion(
     contextNodeIds,
     prompt: suggestion.text,
     provider,
-    model: MODELS[provider].conversation,
+    // Same selection the composer would send — for a catalogue provider that
+    // is whatever the user picked, not the provider's default.
+    model: model ?? defaultModel(provider),
     canvasX: position.x,
     canvasY: position.y,
   });

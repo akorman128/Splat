@@ -4,8 +4,9 @@ import {
 } from "@/components/settings/ProviderKeyList";
 import { OnboardingActions } from "./OnboardingActions";
 
-// One-time onboarding step after sign-in: connect an OpenAI and/or Anthropic
-// key. Skippable — the composer renders a disabled state until a key exists.
+// One-time onboarding step after sign-in: connect an OpenAI, Anthropic and/or
+// OpenRouter key. Skippable — the composer renders a disabled state until a
+// key exists.
 export default async function OnboardingPage() {
   const hasKey = await hasAnyProviderKey();
 
@@ -18,7 +19,8 @@ export default async function OnboardingPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Splat is bring-your-own-key: your prompts run against your own
-            OpenAI or Anthropic account. Add at least one key to start.
+            OpenAI, Anthropic, or OpenRouter account. Add at least one key to
+            start — OpenRouter opens up any model it serves.
           </p>
         </div>
         <ProviderKeyList />
