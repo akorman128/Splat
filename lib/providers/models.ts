@@ -88,11 +88,8 @@ export type CatalogModel = {
   completionPrice: number | null;
 };
 
-export function conversationModelLabel(
-  provider: Provider,
-  model?: string | null,
-): string {
-  return `${PROVIDER_LABELS[provider]} · ${model || defaultModel(provider)}`;
+export function conversationModelLabel(provider: Provider): string {
+  return `${PROVIDER_LABELS[provider]} · ${MODELS[provider].conversation}`;
 }
 
 export function isProvider(value: string): value is Provider {
