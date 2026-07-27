@@ -1,7 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import { MODELS } from "./models";
+import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ProviderAdapter, StreamEvent } from "./types";
 
@@ -34,7 +34,7 @@ export const openaiAdapter: ProviderAdapter = {
       model,
       input: messages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
-      max_output_tokens: 32000,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {

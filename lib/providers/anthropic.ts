@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { MODELS } from "./models";
+import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ProviderAdapter, StreamEvent } from "./types";
 
@@ -32,7 +32,7 @@ export const anthropicAdapter: ProviderAdapter = {
   async *streamChat({ apiKey, model, messages }): AsyncGenerator<StreamEvent> {
     const stream = client(apiKey).messages.stream({
       model,
-      max_tokens: 32000,
+      max_tokens: MAX_OUTPUT_TOKENS,
       messages,
     });
 

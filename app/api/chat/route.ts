@@ -8,7 +8,7 @@ import {
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
-import { isKnownOpenRouterModel } from "@/lib/providers/catalog";
+import { isKnownCatalogModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
 import { topoOrder } from "@/lib/graph/topo-order";
 import type { ChatMessage } from "@/lib/providers/types";
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     // node row exists, so a typo is a 400 on the composer rather than a card
     // that has to be created only to immediately fail.
     const modelAllowed = hasModelCatalog(provider)
-      ? await isKnownOpenRouterModel(model)
+      ? await isKnownCatalogModel(provider, model)
       : model === MODELS[provider].conversation;
     if (!modelAllowed) {
       return NextResponse.json(

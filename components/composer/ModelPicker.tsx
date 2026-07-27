@@ -26,11 +26,20 @@ import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/provide
 /** Rendering every match at once janks the dialog; matches beyond this are counted, not drawn. */
 const MAX_ROWS = 80;
 
-function formatContext(tokens: number | null): string | null {
-  if (!tokens) return null;
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 1_000_000)}M ctx`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K ctx`;
-  return `${tokens} ctx`;
+function formatTokens(tokens: number, suffix: string): string {
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 1_000_000)}M ${suffix}`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K ${suffix}`;
+  return `${tokens} ${suffix}`;
+}
+
+/** Context window and, when the catalogue declares one, the output ceiling. */
+function formatLimits(model: CatalogModel): string | null {
+  const parts: string[] = [];
+  if (model.contextLength) parts.push(formatTokens(model.contextLength, "ctx"));
+  if (model.maxOutputTokens) {
+    parts.push(formatTokens(model.maxOutputTokens, "out"));
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /** Catalogue prices are per token; per-million is the unit people compare in. */
@@ -144,7 +153,7 @@ export function ModelPicker({
               <div className="space-y-0.5 pr-3">
                 {matches.slice(0, MAX_ROWS).map((model) => {
                   const selected = model.id === value;
-                  const context = formatContext(model.contextLength);
+                  const limits = formatLimits(model);
                   const price = formatPrice(model);
                   return (
                     <button
@@ -173,9 +182,9 @@ export function ModelPicker({
                         <span className="block truncate font-mono text-[11px] text-muted-foreground">
                           {model.id}
                         </span>
-                        {(context || price) && (
+                        {(limits || price) && (
                           <span className="block truncate text-[11px] text-muted-foreground">
-                            {[context, price].filter(Boolean).join(" · ")}
+                            {[limits, price].filter(Boolean).join(" · ")}
                           </span>
                         )}
                       </span>

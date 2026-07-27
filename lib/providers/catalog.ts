@@ -1,21 +1,25 @@
 import "server-only";
-import type { CatalogModel } from "./models";
+import type { CatalogModel, CatalogProvider } from "./models";
 
-// OpenRouter's model catalogue. Two consumers: /api/models (fills the
-// composer's picker) and /api/chat (validates the requested id before a node
-// row is written).
+// Live model catalogues for catalogue providers. Three consumers: /api/models
+// (fills the composer's picker), /api/chat (validates the requested id before a
+// node row is written) and the adapters (per-model request limits).
 //
-// The listing endpoint is *public* — it answers 200 for an unauthenticated
-// caller — so this never needs, and never sees, a user's key.
+// The listing endpoint is public, so this never sees a user's key — which also
+// means it lists what the provider serves, not what a given key can reach.
 //
 // Cached in-process behind a TTL rather than via `next: { revalidate }`: the
-// callers are route handlers that read cookies for Supabase auth, which makes
-// them request-time and takes their fetches off the framework's data cache.
-// Validation sits in the chat hot path, so it gets a cache that holds
-// regardless of route semantics.
+// callers read cookies for Supabase auth, which makes them request-time and
+// takes their fetches off the framework's data cache.
 
-const CATALOG_URL = "https://openrouter.ai/api/v1/models";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/models";
 const TTL_MS = 60 * 60 * 1000;
+// Applies only once a list has been cached: after a failed *refresh*, keep
+// serving the stale one for this long instead of re-opening a request per
+// caller. A cold cache never backs off — there is nothing to serve instead,
+// and concurrent callers already coalesce onto one in-flight request, so a
+// transient first failure must not lock the picker out for a whole minute.
+const FAILURE_BACKOFF_MS = 60 * 1000;
 
 type RawModel = {
   id?: unknown;
@@ -23,11 +27,8 @@ type RawModel = {
   context_length?: unknown;
   pricing?: { prompt?: unknown; completion?: unknown } | null;
   architecture?: { output_modalities?: unknown } | null;
+  top_provider?: { max_completion_tokens?: unknown } | null;
 };
-
-let cached: { at: number; models: CatalogModel[] } | null = null;
-// Concurrent callers share one request instead of each opening their own.
-let inFlight: Promise<CatalogModel[]> | null = null;
 
 function toNumber(value: unknown): number | null {
   const n = typeof value === "string" ? Number(value) : value;
@@ -39,12 +40,15 @@ function toNumber(value: unknown): number | null {
 function normalise(raw: RawModel): CatalogModel | null {
   if (typeof raw.id !== "string" || raw.id.length === 0) return null;
 
-  // Splat renders one markdown response per card, so anything that cannot
-  // answer in text (image or audio generators) would only ever produce an
-  // empty card. Absent modality data is treated as text — the field is
-  // advisory and dropping unlabelled models would be worse than including one.
+  // Splat renders one markdown response per card, so an image or audio
+  // generator would only ever produce an empty one. Absent modality data is
+  // treated as text — the field is advisory.
   const outputs = raw.architecture?.output_modalities;
-  if (Array.isArray(outputs) && outputs.length > 0 && !outputs.includes("text")) {
+  if (
+    Array.isArray(outputs) &&
+    outputs.length > 0 &&
+    !outputs.includes("text")
+  ) {
     return null;
   }
 
@@ -52,13 +56,14 @@ function normalise(raw: RawModel): CatalogModel | null {
     id: raw.id,
     name: typeof raw.name === "string" && raw.name ? raw.name : raw.id,
     contextLength: toNumber(raw.context_length),
+    maxOutputTokens: toNumber(raw.top_provider?.max_completion_tokens),
     promptPrice: toNumber(raw.pricing?.prompt),
     completionPrice: toNumber(raw.pricing?.completion),
   };
 }
 
-async function load(): Promise<CatalogModel[]> {
-  const res = await fetch(CATALOG_URL, {
+async function loadOpenRouter(): Promise<CatalogModel[]> {
+  const res = await fetch(OPENROUTER_URL, {
     headers: { Accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
@@ -81,52 +86,137 @@ async function load(): Promise<CatalogModel[]> {
   return models;
 }
 
-/**
- * The catalogue, from cache when fresh. Throws if OpenRouter is unreachable
- * and nothing is cached; callers decide whether that is fatal.
- */
-export async function openRouterCatalog(): Promise<CatalogModel[]> {
-  if (cached && Date.now() - cached.at < TTL_MS) {
-    return cached.models;
+const LOADERS: Record<CatalogProvider, () => Promise<CatalogModel[]>> = {
+  openrouter: loadOpenRouter,
+};
+
+// The array is what /api/models serialises; the index is what per-request
+// lookups use. Both callers of catalogEntry/isKnownCatalogModel run in the
+// chat hot path, so neither should rescan a few hundred rows.
+type Catalogue = {
+  at: number;
+  models: CatalogModel[];
+  byId: Map<string, CatalogModel>;
+};
+
+type CacheEntry = {
+  fresh: Catalogue | null;
+  failure: { at: number; error: Error } | null;
+  inFlight: Promise<Catalogue> | null;
+};
+
+const caches = new Map<CatalogProvider, CacheEntry>();
+
+function cacheFor(provider: CatalogProvider): CacheEntry {
+  let entry = caches.get(provider);
+  if (!entry) {
+    entry = { fresh: null, failure: null, inFlight: null };
+    caches.set(provider, entry);
   }
-  if (!inFlight) {
-    inFlight = load()
+  return entry;
+}
+
+function index(models: CatalogModel[]): Catalogue {
+  return {
+    at: Date.now(),
+    models,
+    byId: new Map(models.map((m) => [m.id, m])),
+  };
+}
+
+async function catalogue(provider: CatalogProvider): Promise<Catalogue> {
+  const cache = cacheFor(provider);
+  const now = Date.now();
+
+  if (cache.fresh && now - cache.fresh.at < TTL_MS) {
+    return cache.fresh;
+  }
+
+  // Stale list in hand and a recent failure: skip the network entirely rather
+  // than make every caller pay the fetch timeout. Model ids are long-lived.
+  if (
+    cache.fresh &&
+    cache.failure &&
+    now - cache.failure.at < FAILURE_BACKOFF_MS
+  ) {
+    return cache.fresh;
+  }
+
+  if (!cache.inFlight) {
+    cache.inFlight = LOADERS[provider]()
       .then((models) => {
-        cached = { at: Date.now(), models };
-        return models;
+        const loaded = index(models);
+        cache.fresh = loaded;
+        cache.failure = null;
+        return loaded;
+      })
+      .catch((err: unknown) => {
+        const error = err instanceof Error ? err : new Error(String(err));
+        cache.failure = { at: Date.now(), error };
+        throw error;
       })
       .finally(() => {
-        inFlight = null;
+        cache.inFlight = null;
       });
   }
+
   try {
-    return await inFlight;
+    return await cache.inFlight;
   } catch (err) {
-    // A stale catalogue beats no catalogue: model ids are long-lived, and the
-    // alternative is rejecting a selection the user made minutes ago.
-    if (cached) {
+    if (cache.fresh) {
       console.warn(
-        `[providers/catalog] refresh failed, serving stale list: ${
+        `[providers/catalog] ${provider} refresh failed, serving stale list: ${
           err instanceof Error ? err.message : "unknown error"
         }`,
       );
-      return cached.models;
+      return cache.fresh;
     }
     throw err;
   }
 }
 
 /**
- * Whether `model` is an id OpenRouter currently serves.
+ * A provider's catalogue, from cache when fresh. Throws only when the upstream
+ * is unreachable and nothing has ever been cached; callers decide whether that
+ * is fatal.
+ */
+export async function modelCatalog(
+  provider: CatalogProvider,
+): Promise<CatalogModel[]> {
+  return (await catalogue(provider)).models;
+}
+
+/**
+ * A single catalogue row, or null when the id is unknown *or* the catalogue
+ * cannot be reached. Callers must read null as "no metadata available", not as
+ * "model does not exist" — isKnownCatalogModel answers that question, and it
+ * fails open on purpose.
+ */
+export async function catalogEntry(
+  provider: CatalogProvider,
+  model: string,
+): Promise<CatalogModel | null> {
+  try {
+    return (await catalogue(provider)).byId.get(model) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `model` is an id this provider currently serves.
  *
  * Fails *open*: if the catalogue cannot be reached at all we accept any
  * plausibly-shaped id rather than blocking the user's prompt on our own
- * outage. Nothing is lost by doing so — OpenRouter rejects an unknown id with
- * a 400 that the card surfaces verbatim, with a Retry button.
+ * outage. The provider rejects an unknown id with a 400 the card surfaces
+ * verbatim, with a Retry button.
  */
-export async function isKnownOpenRouterModel(model: string): Promise<boolean> {
+export async function isKnownCatalogModel(
+  provider: CatalogProvider,
+  model: string,
+): Promise<boolean> {
   try {
-    return (await openRouterCatalog()).some((m) => m.id === model);
+    return (await catalogue(provider)).byId.has(model);
   } catch {
     return /^[\w.\-]+\/[\w.\-:]+$/.test(model);
   }

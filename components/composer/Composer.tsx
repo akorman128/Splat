@@ -218,7 +218,7 @@ export function Composer({
 
       <div className="flex items-center gap-2">
         <Select
-          value={provider ?? undefined}
+          value={provider}
           onValueChange={(value) => {
             if (typeof value === "string" && isProvider(value)) {
               setProvider(value as Provider);
