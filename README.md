@@ -124,7 +124,9 @@ otherwise have no fallback at all.
 7. **Suggestions + titles** — When a response completes, the utility model
    fills in the card title (≤6 words) and three chips. Both survive reload;
    a taken chip renders checked. A root card's title becomes the conversation
-   title in the sidebar.
+   title in the sidebar, but only while that conversation is still untitled.
+   Rename one yourself from its sidebar ⋯ menu (Enter saves, Esc discards):
+   the auto-titler leaves your title alone from then on.
 8. **Context picker** — Select a card, and the composer shows every ancestor
    with a checkbox, an approximate token count, and a running total (full
    path to root checked by default). Uncheck/check ancestors, submit, then

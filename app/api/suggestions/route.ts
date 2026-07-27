@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { decryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
+import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 import type { Provider } from "@/lib/providers/models";
 
 export const maxDuration = 60;
@@ -90,11 +91,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
+  // Only ever names an untitled conversation: a title the user typed (or an
+  // earlier root card's) is left alone.
   if (!node.parent_id) {
     await supabase
       .from("conversations")
       .update({ title: result.title })
-      .eq("id", node.conversation_id);
+      .eq("id", node.conversation_id)
+      .eq("title", DEFAULT_CONVERSATION_TITLE);
   }
 
   return NextResponse.json({ title: result.title, suggestions: rows });
