@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  PROVIDER_KEY_URLS,
   PROVIDER_LABELS,
   type Provider,
 } from "@/lib/providers/models";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 
 export function ProviderKeyForm({
   provider,
@@ -80,9 +81,21 @@ export function ProviderKeyForm({
   return (
     <form onSubmit={save} className="space-y-3 rounded-lg border p-4">
       <div className="flex items-center justify-between">
-        <Label htmlFor={`key-${provider}`} className="text-base">
-          {PROVIDER_LABELS[provider]}
-        </Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor={`key-${provider}`} className="text-base">
+            {PROVIDER_LABELS[provider]}
+          </Label>
+          <a
+            href={PROVIDER_KEY_URLS[provider]}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Get an API key from ${PROVIDER_LABELS[provider]}`}
+            aria-label={`Get an API key from ${PROVIDER_LABELS[provider]} (opens in a new tab)`}
+            className="rounded-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
+        </div>
         {connectedLast4 && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <CheckCircle2 className="size-3.5 text-green-600" />
