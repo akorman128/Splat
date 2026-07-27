@@ -99,6 +99,57 @@ export function Composer({
     }
   }
 
+  const connectedKey = connectedProviders.join(",");
+  const parkedPick = useRef<{
+    provider: Provider | null;
+    model: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const composer = useComposerStore.getState();
+    if (!regenerateNodeId) {
+      const parked = parkedPick.current;
+      if (parked) {
+        parkedPick.current = null;
+        composer.setProvider(parked.provider);
+        if (parked.model) composer.setModel(parked.model);
+      }
+      return;
+    }
+
+    if (!parkedPick.current) {
+      parkedPick.current = { provider: composer.provider, model: composer.model };
+    }
+    const target = useGraphStore.getState().nodes[regenerateNodeId];
+    if (
+      target &&
+      isProvider(target.provider) &&
+      connectedKey.split(",").includes(target.provider)
+    ) {
+      composer.setProvider(target.provider);
+      composer.setModel(target.model);
+    }
+
+    const field = textareaRef.current;
+    if (field) {
+      field.focus();
+      field.setSelectionRange(field.value.length, field.value.length);
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (
+        document.querySelector(
+          '[data-slot="dialog-content"], [data-slot="sheet-content"]',
+        )
+      ) {
+        return;
+      }
+      composer.setRegenerateNode(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [regenerateNodeId, connectedKey]);
+
   function regenerate() {
     if (sending) return;
     const text = prompt.trim();
@@ -144,7 +195,7 @@ export function Composer({
 
     const contextNodeIds = parentNode
       ? Object.entries(checked)
-          .filter(([, v]) => v)
+          .filter(([id, v]) => v && graph.nodes[id])
           .map(([id]) => id)
       : [];
     const position = parentNode
@@ -256,10 +307,6 @@ export function Composer({
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             submit();
-          }
-          if (e.key === "Escape" && regenerateNodeId) {
-            e.preventDefault();
-            setRegenerateNode(null);
           }
         }}
         placeholder={
