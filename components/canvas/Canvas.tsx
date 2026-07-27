@@ -176,7 +176,9 @@ function reconcile(
     { history: "ignore", ignoreShapeLock: true },
   );
 
-  if (!hadShapes && createdAny) {
+  // A pending focus frames the canvas itself; fitting first would jump the
+  // camera twice on a conversation's opening card.
+  if (!hadShapes && createdAny && !useGraphStore.getState().focusNodeId) {
     editor.zoomToFit({ animation: { duration: 0 } });
     if (editor.getZoomLevel() > 1) {
       editor.resetZoom();
@@ -190,6 +192,7 @@ export default function Canvas() {
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
+  const focusNodeId = useGraphStore((s) => s.focusNodeId);
   const [initialColorScheme] = useState<"dark" | "light">(() =>
     typeof document !== "undefined" &&
     document.documentElement.classList.contains("dark")
@@ -203,6 +206,18 @@ export default function Canvas() {
   useEffect(() => {
     if (editor) reconcile(editor, nodes, edges, removing);
   }, [editor, nodes, edges]);
+
+  useEffect(() => {
+    if (!editor || !focusNodeId) return;
+    const bounds = editor.getShapePageBounds(cardShapeId(focusNodeId));
+    if (bounds) {
+      editor.zoomToBounds(bounds, {
+        targetZoom: 1,
+        animation: { duration: 300 },
+      });
+    }
+    useGraphStore.getState().setFocusNode(null);
+  }, [editor, focusNodeId]);
 
   useEffect(() => {
     if (!editor || !selectedNodeId) return;

@@ -13,6 +13,8 @@ type GraphState = {
   hoveredNodeId: string | null;
   expandedNodeId: string | null;
   deletingNodeIds: string[];
+  // Set when a freshly created card should pull the camera to it.
+  focusNodeId: string | null;
   // Deleted ids are kept so a stream still in flight cannot re-add its card.
   removedNodeIds: Record<string, true>;
 
@@ -29,6 +31,7 @@ type GraphState = {
   setSelectedNode(id: string | null): void;
   setHoveredNode(id: string | null): void;
   setExpandedNode(id: string | null): void;
+  setFocusNode(id: string | null): void;
   setDeletingNodes(ids: string[]): void;
   removeNodes(ids: string[]): void;
   updateNodeGeometry(
@@ -55,6 +58,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   hoveredNodeId: null,
   expandedNodeId: null,
   deletingNodeIds: [],
+  focusNodeId: null,
   removedNodeIds: {},
 
   init({ conversationId, nodes, edges, suggestions }) {
@@ -75,6 +79,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       hoveredNodeId: null,
       expandedNodeId: null,
       deletingNodeIds: [],
+      focusNodeId: null,
       removedNodeIds: {},
     });
   },
@@ -138,6 +143,10 @@ export const useGraphStore = create<GraphState>((set) => ({
 
   setExpandedNode(id) {
     set({ expandedNodeId: id });
+  },
+
+  setFocusNode(id) {
+    set({ focusNodeId: id });
   },
 
   setDeletingNodes(ids) {
