@@ -36,6 +36,9 @@ export interface ProviderAdapter {
    * `model` is the id the card itself was generated with. Providers with a
    * pinned model tier ignore it; catalogue providers use it as the fallback
    * target, since it is the one id this key is known to be able to reach.
+   * For a catalogue provider that defaults to a meta-model, the meta-model is
+   * still a valid fallback — routing to something that may not hold a schema
+   * beats having no fallback for the default selection.
    */
   generateFollowups(opts: {
     apiKey: string;

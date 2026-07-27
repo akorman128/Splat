@@ -1,9 +1,10 @@
 import "server-only";
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { MODELS, defaultModel } from "./models";
+import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
+import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import type { ProviderAdapter, StreamEvent } from "./types";
+import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 // OpenRouter speaks the OpenAI Chat Completions wire format, so this reuses
 // the `openai` SDK against their base URL — the client-SDK route their
@@ -38,19 +39,116 @@ function client(apiKey: string): OpenAI {
   });
 }
 
+const OUTPUT_RESERVE_TOKENS = 512;
+const MIN_OUTPUT_TOKENS = 256;
+const FOLLOWUPS_MAX_TOKENS = 2000;
+
+// ~4 chars per token plus per-message framing. Deliberately an over-estimate:
+// guessing high costs headroom, guessing low costs a 400.
+function estimatePromptTokens(messages: ChatMessage[]): number {
+  const chars = messages.reduce((n, m) => n + m.content.length, 0);
+  return Math.ceil(chars / 4) + messages.length * 8;
+}
+
+/**
+ * max_tokens for one call, or undefined to let OpenRouter apply the model's own
+ * default. Unlike a pinned-model adapter this cannot hard-code a budget: the
+ * catalogue spans models that cap output far below MAX_OUTPUT_TOKENS and models
+ * whose whole context is smaller, and OpenRouter 400s a max_tokens above
+ * either. Every known limit therefore applies at once — a declared output cap
+ * does not exempt a model from its context window, which the prompt shares.
+ */
+async function outputBudget(
+  model: string,
+  messages: ChatMessage[],
+): Promise<number | undefined> {
+  const entry = await catalogEntry("openrouter", model);
+  // Unknown id, or the catalogue is unreachable. A guessed number is the one
+  // thing that can turn a working model into a 400.
+  if (!entry) return undefined;
+
+  let budget = MAX_OUTPUT_TOKENS;
+  if (entry.maxOutputTokens) {
+    budget = Math.min(budget, entry.maxOutputTokens);
+  }
+  if (entry.contextLength) {
+    const room =
+      entry.contextLength -
+      estimatePromptTokens(messages) -
+      OUTPUT_RESERVE_TOKENS;
+    budget = Math.min(budget, room);
+  }
+  // The prompt already fills the window: say nothing, and let OpenRouter return
+  // an error that counts tokens properly and names the real limit.
+  return budget >= MIN_OUTPUT_TOKENS ? budget : undefined;
+}
+
+// Only these mean the model actually finished. Anything else throws so the
+// route persists the partial as status:"error" with a Retry button — letting a
+// truncated answer through as "complete" offers no Retry and then feeds the
+// cut-off text verbatim as context into every child prompt. The non-OpenAI
+// spellings are here because OpenRouter fronts dozens of upstreams and does not
+// normalise every one of them.
+const COMPLETE_FINISH_REASONS = new Set([
+  "stop",
+  "tool_calls",
+  "end_turn",
+  "stop_sequence",
+  "eos",
+  "complete",
+]);
+const TRUNCATING_FINISH_REASONS = new Set([
+  "length",
+  "max_tokens",
+  "model_length",
+  "max_output_tokens",
+  "context_length_exceeded",
+]);
+const REFUSAL_FINISH_REASONS = new Set([
+  "content_filter",
+  "refusal",
+  "safety",
+  "recitation",
+  "blocklist",
+  "prohibited_content",
+  "spii",
+]);
+
+function assertWholeResponse(finishReason: string | null): void {
+  if (finishReason === null) return; // no terminal chunk seen
+  const reason = finishReason.toLowerCase();
+  if (COMPLETE_FINISH_REASONS.has(reason)) return;
+  if (TRUNCATING_FINISH_REASONS.has(reason)) {
+    throw new Error(
+      "OpenRouter response incomplete: hit the output token limit.",
+    );
+  }
+  if (REFUSAL_FINISH_REASONS.has(reason)) {
+    throw new Error("The model declined this request (content filter).");
+  }
+  if (reason === "error") {
+    throw new Error("OpenRouter reported a failed response.");
+  }
+  throw new Error(`OpenRouter response incomplete: ${finishReason}.`);
+}
+
 /**
  * OpenRouter can report a mid-stream failure as an `error` member on an
- * otherwise ordinary chunk — the SDK has no type for it and does not throw,
- * so an unhandled one would end the loop early and store a truncated answer
- * as "complete".
+ * otherwise ordinary chunk. The SDK throws on a top-level one, but not on a
+ * per-choice one — and an unhandled one just ends the loop with no
+ * finish_reason, storing a truncated answer as "complete".
  */
+type ChunkError = { message?: string; code?: string | number } | null;
+
 type MaybeErrorChunk = {
-  error?: { message?: string; code?: string | number } | null;
+  error?: ChunkError;
+  choices?: ({ error?: ChunkError } | null)[];
 };
 
 function streamErrorMessage(chunk: MaybeErrorChunk): string | null {
-  if (!chunk.error) return null;
-  const { message, code } = chunk.error;
+  const error = chunk.error ?? chunk.choices?.[0]?.error;
+  if (!error) return null;
+  const { message, code } = error;
   return `OpenRouter reported an error mid-stream${code ? ` (${code})` : ""}: ${
     message ?? "no detail given"
   }`;
@@ -94,7 +192,7 @@ export const openrouterAdapter: ProviderAdapter = {
       // Without this OpenRouter streams no usage block at all and every card
       // would persist null token counts.
       stream_options: { include_usage: true },
-      max_tokens: 32000,
+      max_tokens: await outputBudget(model, messages),
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {
@@ -123,26 +221,7 @@ export const openrouterAdapter: ProviderAdapter = {
       }
     }
 
-    // Same contract as the other two adapters: only a genuine finish may fall
-    // through. Anything else has to throw so the route persists the partial as
-    // status:"error" with a Retry button — letting a truncated answer through
-    // as "complete" would offer no Retry and then feed the cut-off text
-    // verbatim as context into every child prompt.
-    switch (finishReason) {
-      case "stop":
-      case null: // no terminal chunk seen — nothing to report
-        break;
-      case "length":
-        throw new Error(
-          "OpenRouter response incomplete: hit the max_tokens limit.",
-        );
-      case "content_filter":
-        throw new Error("The model declined this request (content filter).");
-      case "error":
-        throw new Error("OpenRouter reported a failed response.");
-      default:
-        throw new Error(`OpenRouter response incomplete: ${finishReason}.`);
-    }
+    assertWholeResponse(finishReason);
 
     yield { type: "usage", ...usage };
   },
@@ -151,14 +230,21 @@ export const openrouterAdapter: ProviderAdapter = {
     // chat.completions.parse (not .create) so the SDK decodes and validates
     // into message.parsed, matching the other adapters — a bare JSON.parse
     // surfaces a truncated body as an opaque SyntaxError.
+    const messages: ChatMessage[] = [
+      { role: "user", content: followupsPrompt(prompt, response) },
+    ];
+    // The fallback target is a user-chosen catalogue model, so even this small
+    // budget has to fit inside whatever that model accepts.
     const call = async (target: string) => {
+      const budget = await outputBudget(target, messages);
       const res = await client(apiKey).chat.completions.parse({
         model: target,
-        messages: [
-          { role: "user", content: followupsPrompt(prompt, response) },
-        ],
+        messages,
         response_format: zodResponseFormat(FollowupsSchema, "followups"),
-        max_tokens: 2000,
+        max_tokens: Math.min(
+          FOLLOWUPS_MAX_TOKENS,
+          budget ?? FOLLOWUPS_MAX_TOKENS,
+        ),
       });
       return toStructured(res.choices[0]?.message.parsed ?? null);
     };
@@ -166,15 +252,8 @@ export const openrouterAdapter: ProviderAdapter = {
     try {
       return await call(MODELS.openrouter.utility);
     } catch (err) {
-      // OpenRouter answers an id it does not serve with a 400, not a 404 —
-      // and a model can also be absent for this account specifically. Either
-      // way, fall back to the model that produced the card, which is known to
-      // work for this key.
-      const unavailable =
-        err instanceof OpenAI.NotFoundError ||
-        err instanceof OpenAI.BadRequestError;
-      const fallback = model ?? defaultModel("openrouter");
-      if (unavailable && fallback !== MODELS.openrouter.utility) {
+      const fallback = followupsFallback(model);
+      if (fallback && isModelUnavailable(err)) {
         console.warn(
           `[providers/openrouter] utility model ${MODELS.openrouter.utility} unavailable; falling back to ${fallback}`,
         );
@@ -184,3 +263,35 @@ export const openrouterAdapter: ProviderAdapter = {
     }
   },
 };
+
+/**
+ * The card's own model: the one id this key demonstrably reaches. Includes
+ * openrouter/auto — it routes per request so it carries no structured-output
+ * guarantee, but it is the default conversation model, and a fallback that
+ * might work beats no follow-ups at all for the most common card there is.
+ */
+function followupsFallback(model: string | undefined): string | null {
+  const fallback = model ?? OPENROUTER_AUTO;
+  return fallback === MODELS.openrouter.utility ? null : fallback;
+}
+
+// OpenRouter answers an id it does not serve with a 400, not a 404, so a bare
+// `instanceof BadRequestError` would also swallow schema and parameter errors
+// — and retrying one of those just bills a second identical failure. Match the
+// phrasings that actually mean "no such model", not any mention of the word.
+const MODEL_UNAVAILABLE_PATTERNS = [
+  /model[_ ]not[_ ]found/i,
+  /no (?:endpoints?|allowed providers?)[^.]*found/i,
+  /not a valid model/i,
+  /(?:unknown|invalid|unsupported) model/i,
+  /does not exist or you do not have access/i,
+];
+
+function isModelUnavailable(err: unknown): boolean {
+  if (err instanceof OpenAI.NotFoundError) return true;
+  if (!(err instanceof OpenAI.BadRequestError)) return false;
+  if (err.code === "model_not_found") return true;
+  return MODEL_UNAVAILABLE_PATTERNS.some((pattern) =>
+    pattern.test(err.message),
+  );
+}

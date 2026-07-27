@@ -14,6 +14,20 @@ export type Provider = (typeof PROVIDERS)[number];
 
 export type ModelRole = "conversation" | "utility";
 
+/**
+ * OpenRouter's meta-model: it picks a real model per request. It is the default
+ * conversation model, so it is also the last-resort follow-ups fallback — a
+ * routed model that may not hold a json_schema still beats no fallback at all.
+ */
+export const OPENROUTER_AUTO = "openrouter/auto";
+
+/**
+ * App-wide ceiling on a single streamed response, shared by all three adapters
+ * so the cap cannot drift per provider. Catalogue models are additionally
+ * bounded by their own limits (see lib/providers/openrouter.ts).
+ */
+export const MAX_OUTPUT_TOKENS = 32000;
+
 export const MODELS: Record<Provider, Record<ModelRole, string>> = {
   openai: {
     // Flagship conversation model, streamed.
@@ -26,17 +40,10 @@ export const MODELS: Record<Provider, Record<ModelRole, string>> = {
     utility: "claude-haiku-4-5",
   },
   openrouter: {
-    // A *default*, not the only allowed value: OpenRouter is a catalogue
-    // provider (see CATALOG_PROVIDERS), so the user picks any id from the
-    // live list. openrouter/auto lets OpenRouter route each prompt itself,
-    // which is the least opinionated thing to preselect.
-    conversation: "openrouter/auto",
-    // Fixed regardless of which conversation model the user picked: one
-    // OpenRouter key reaches every model, and follow-ups need dependable
-    // json_schema adherence on a cheap tier. Picked off the catalogue's
-    // supported_parameters (it advertises structured_outputs) and verified
-    // end-to-end. Reasoning-heavy nano models were rejected — they spend the
-    // whole output budget thinking and return an empty payload.
+    // A default, not the only allowed value — the user picks any catalogue id.
+    conversation: OPENROUTER_AUTO,
+    // Fixed regardless of the conversation model: follow-ups need dependable
+    // json_schema adherence on a cheap tier.
     utility: "google/gemini-2.5-flash-lite",
   },
 };
@@ -54,19 +61,23 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
 export const PROVIDER_KEY_URLS: Record<Provider, string> = {
   openai: "https://platform.openai.com/api-keys",
   anthropic: "https://platform.claude.com/settings/workspaces/default/keys",
-  openrouter: "https://openrouter.ai/workspaces/default/keys",
+  openrouter: "https://openrouter.ai/settings/keys",
 };
 
 /**
  * Providers whose conversation model is chosen from a live catalogue instead
- * of being pinned in MODELS. Request validation, the composer's picker and
- * the model label all branch on this rather than on the literal "openrouter",
- * so adding a second aggregator stays a one-line change here.
+ * of being pinned in MODELS. The composer, /api/models and /api/chat all
+ * branch on hasModelCatalog() rather than on a literal id, so adding a
+ * provider takes exactly two edits: this list, and a loader in the LOADERS
+ * map in lib/providers/catalog.ts (the compiler flags the missing key).
  */
-export const CATALOG_PROVIDERS: readonly Provider[] = ["openrouter"];
+export const CATALOG_PROVIDERS = ["openrouter"] as const;
+export type CatalogProvider = (typeof CATALOG_PROVIDERS)[number];
 
-export function hasModelCatalog(provider: Provider): boolean {
-  return CATALOG_PROVIDERS.includes(provider);
+export function hasModelCatalog(
+  provider: Provider,
+): provider is CatalogProvider {
+  return (CATALOG_PROVIDERS as readonly Provider[]).includes(provider);
 }
 
 /** The model a fresh composer selection starts on for this provider. */
@@ -83,13 +94,18 @@ export type CatalogModel = {
   id: string;
   name: string;
   contextLength: number | null;
+  /**
+   * Most output tokens this model will accept a request for. null when the
+   * catalogue does not say — callers must not assume a large budget.
+   */
+  maxOutputTokens: number | null;
   /** USD per token. null when the provider prices the model dynamically. */
   promptPrice: number | null;
   completionPrice: number | null;
 };
 
 export function conversationModelLabel(provider: Provider): string {
-  return `${PROVIDER_LABELS[provider]} · ${MODELS[provider].conversation}`;
+  return `${PROVIDER_LABELS[provider]} · ${defaultModel(provider)}`;
 }
 
 export function isProvider(value: string): value is Provider {

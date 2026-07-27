@@ -70,15 +70,34 @@ npm run dev     # http://localhost:3000
 | --- | --- | --- |
 | OpenAI | `gpt-5.6-sol` | `gpt-5.6-luna` |
 | Anthropic | `claude-opus-5` | `claude-haiku-4-5` |
+| OpenRouter | any catalogue id (default `openrouter/auto`) | `google/gemini-2.5-flash-lite` |
 
-The composer's dropdown selects the **provider**, not the model: each provider
-has exactly one conversation model, pinned above, and `/api/chat` rejects any
-other id. That response is streamed.
+The composer's first dropdown selects the **provider**, not the model. OpenAI
+and Anthropic expose exactly one conversation model each — the pinned id above
+— and `/api/chat` rejects anything else. OpenRouter is the exception: it is a
+*catalogue* provider (`CATALOG_PROVIDERS`), so a second picker appears next to
+it listing the live catalogue from `/api/models`, and any id that catalogue
+currently serves is accepted. Either way the response is streamed. Validation
+fails *open*: if the catalogue cannot be reached at all, any plausibly-shaped
+`vendor/model` id is let through rather than blocking a send on our own outage.
+
+The catalogue is OpenRouter's **public** listing, so it is not scoped to the
+key: a handful of ids need their own upstream provider setup or account credit
+and will fail at send time. It also carries each model's context window and,
+where the provider declares one, its output ceiling. The adapter sizes
+`max_tokens` from both of those *and* the estimated prompt size, since a
+declared output cap does not exempt a model from its context window — a fixed
+budget is only safe for a pinned model. Where the catalogue declares neither
+(including `openrouter/auto`, whose figures are the union across everything it
+may route to) the request goes out with no `max_tokens` and OpenRouter applies
+the model's own default.
 
 The utility model handles the structured "title + exactly 3 suggestions" call
-(strict JSON schema, low output budget). If a utility model is unavailable on
-an account, the adapter falls back one tier up (the conversation model) and
-logs it.
+(strict JSON schema, low output budget) and is fixed per provider regardless of
+the conversation model. If it is unavailable on an account, the adapter falls
+back one tier up and logs it — for a catalogue provider that means the card's
+own model, `openrouter/auto` included, since the default selection would
+otherwise have no fallback at all.
 
 ## Verification click-paths (per build step)
 

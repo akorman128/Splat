@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { authClaims } from "@/lib/supabase/claims";
-import { openRouterCatalog } from "@/lib/providers/catalog";
-import { hasModelCatalog, isProvider } from "@/lib/providers/models";
+import { modelCatalog } from "@/lib/providers/catalog";
+import {
+  PROVIDER_LABELS,
+  hasModelCatalog,
+  isProvider,
+} from "@/lib/providers/models";
 
 // Model catalogue for providers that have one (currently OpenRouter), so the
-// composer can offer every model the key can reach.
+// composer can offer every model the provider serves.
 //
 // Proxied rather than fetched from the browser for the same reason every other
 // provider call is: the client talks to our API, never to a provider. It is
@@ -31,11 +35,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    return NextResponse.json({ models: await openRouterCatalog() });
+    return NextResponse.json({ models: await modelCatalog(provider) });
   } catch (err) {
     return NextResponse.json(
       {
-        error: `Could not load the OpenRouter model list: ${
+        error: `Could not load the ${PROVIDER_LABELS[provider]} model list: ${
           err instanceof Error ? err.message : "unknown error"
         }`,
       },
