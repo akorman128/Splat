@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { Composer } from "@/components/composer/Composer";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import { DeleteNodeDialog } from "./DeleteNodeDialog";
+import { ShortcutsSheet } from "./ShortcutsSheet";
+import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import type {
   ContextEdgeRow,
   CredentialSummary,
@@ -31,6 +33,9 @@ export function ConversationView({
 }) {
   const initialized = useGraphStore((s) => s.conversationId === conversationId);
   const hasNodes = useGraphStore((s) => Object.keys(s.nodes).length > 0);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  useKeyboardShortcuts({ shortcutsOpen, setShortcutsOpen });
 
   useEffect(() => {
     useGraphStore
@@ -62,6 +67,7 @@ export function ConversationView({
       )}
       <ExpandedCardOverlay />
       <DeleteNodeDialog />
+      <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

@@ -10,6 +10,7 @@ type GraphState = {
   contextCounts: Record<string, number>;
   suggestions: Record<string, SuggestionRow[]>;
   selectedNodeId: string | null;
+  hoveredNodeId: string | null;
   expandedNodeId: string | null;
   deletingNodeIds: string[];
   // Deleted ids are kept so a stream still in flight cannot re-add its card.
@@ -26,6 +27,7 @@ type GraphState = {
   setSuggestions(nodeId: string, rows: SuggestionRow[]): void;
   markSuggestionTaken(suggestionId: string, takenAt: string): void;
   setSelectedNode(id: string | null): void;
+  setHoveredNode(id: string | null): void;
   setExpandedNode(id: string | null): void;
   setDeletingNodes(ids: string[]): void;
   removeNodes(ids: string[]): void;
@@ -50,6 +52,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   contextCounts: {},
   suggestions: {},
   selectedNodeId: null,
+  hoveredNodeId: null,
   expandedNodeId: null,
   deletingNodeIds: [],
   removedNodeIds: {},
@@ -69,6 +72,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       contextCounts: countByConsumer(edges),
       suggestions: suggestionMap,
       selectedNodeId: null,
+      hoveredNodeId: null,
       expandedNodeId: null,
       deletingNodeIds: [],
       removedNodeIds: {},
@@ -126,6 +130,12 @@ export const useGraphStore = create<GraphState>((set) => ({
     set({ selectedNodeId: id });
   },
 
+  setHoveredNode(id) {
+    set((state) =>
+      state.hoveredNodeId === id ? state : { hoveredNodeId: id },
+    );
+  },
+
   setExpandedNode(id) {
     set({ expandedNodeId: id });
   },
@@ -162,6 +172,10 @@ export const useGraphStore = create<GraphState>((set) => ({
           state.selectedNodeId && gone.has(state.selectedNodeId)
             ? null
             : state.selectedNodeId,
+        hoveredNodeId:
+          state.hoveredNodeId && gone.has(state.hoveredNodeId)
+            ? null
+            : state.hoveredNodeId,
         expandedNodeId:
           state.expandedNodeId && gone.has(state.expandedNodeId)
             ? null

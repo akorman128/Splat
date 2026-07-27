@@ -17,6 +17,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const { node, responseText, contextCount, isStreaming, isError } =
     useCardState(nodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
+  const setHoveredNode = useGraphStore((s) => s.setHoveredNode);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const isRegenerateTarget = useComposerStore(
@@ -32,7 +33,11 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative h-full w-full"
+      onPointerEnter={() => setHoveredNode(nodeId)}
+      onPointerLeave={() => setHoveredNode(null)}
+    >
       <div
         className={`flex h-full w-full flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-md ${
           isError ? "border-destructive/60" : ""
