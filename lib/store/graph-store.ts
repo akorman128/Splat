@@ -1,11 +1,13 @@
 "use client";
 
 import { create } from "zustand";
-import type { ContextEdgeRow, NodeRow, SuggestionRow } from "@/lib/types";
+import type { CardNode, ContextEdgeRow, SuggestionRow } from "@/lib/types";
 
 type GraphState = {
   conversationId: string | null;
-  nodes: Record<string, NodeRow>;
+  // A shared canvas is a snapshot: no composer, no card actions, no writes.
+  readOnly: boolean;
+  nodes: Record<string, CardNode>;
   edges: ContextEdgeRow[];
   contextCounts: Record<string, number>;
   suggestions: Record<string, SuggestionRow[]>;
@@ -20,11 +22,12 @@ type GraphState = {
 
   init(payload: {
     conversationId: string;
-    nodes: NodeRow[];
+    nodes: CardNode[];
     edges: ContextEdgeRow[];
     suggestions: SuggestionRow[];
+    readOnly?: boolean;
   }): void;
-  upsertNode(node: NodeRow): void;
+  upsertNode(node: CardNode): void;
   addEdges(edges: ContextEdgeRow[]): void;
   setSuggestions(nodeId: string, rows: SuggestionRow[]): void;
   markSuggestionTaken(suggestionId: string, takenAt: string): void;
@@ -50,6 +53,7 @@ function countByConsumer(edges: ContextEdgeRow[]): Record<string, number> {
 
 export const useGraphStore = create<GraphState>((set) => ({
   conversationId: null,
+  readOnly: false,
   nodes: {},
   edges: [],
   contextCounts: {},
@@ -61,7 +65,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   focusNodeId: null,
   removedNodeIds: {},
 
-  init({ conversationId, nodes, edges, suggestions }) {
+  init({ conversationId, nodes, edges, suggestions, readOnly = false }) {
     const suggestionMap: Record<string, SuggestionRow[]> = {};
     for (const s of suggestions) {
       (suggestionMap[s.node_id] ??= []).push(s);
@@ -71,6 +75,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     }
     set({
       conversationId,
+      readOnly,
       nodes: Object.fromEntries(nodes.map((n) => [n.id, n])),
       edges,
       contextCounts: countByConsumer(edges),
@@ -156,7 +161,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   removeNodes(ids) {
     set((state) => {
       const gone = new Set(ids);
-      const nodes: Record<string, NodeRow> = {};
+      const nodes: Record<string, CardNode> = {};
       for (const [id, node] of Object.entries(state.nodes)) {
         if (!gone.has(id)) nodes[id] = node;
       }

@@ -1,4 +1,4 @@
-import type { NodeRow } from "@/lib/types";
+import type { CardNode } from "@/lib/types";
 
 export const CARD_W = 380;
 export const CARD_H = 340;
@@ -7,8 +7,8 @@ const LEVEL_GAP = 120;
 const ROOT_GAP = 200;
 
 export function childPosition(
-  parent: NodeRow,
-  allNodes: NodeRow[],
+  parent: CardNode,
+  allNodes: CardNode[],
 ): { x: number; y: number } {
   const siblingCount = allNodes.filter(
     (n) => n.parent_id === parent.id,
@@ -19,7 +19,7 @@ export function childPosition(
   };
 }
 
-export function rootPosition(allNodes: NodeRow[]): { x: number; y: number } {
+export function rootPosition(allNodes: CardNode[]): { x: number; y: number } {
   const rootCount = allNodes.filter((n) => n.parent_id === null).length;
   return { x: rootCount * (CARD_W + ROOT_GAP), y: 0 };
 }

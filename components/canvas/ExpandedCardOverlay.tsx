@@ -59,6 +59,7 @@ export function ExpandedCardOverlay() {
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
   const nodes = useGraphStore((s) => s.nodes);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
+  const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const { node, responseText, contextCount, isError, isStreaming } =
     useCardState(expandedNodeId);
@@ -139,7 +140,7 @@ export function ExpandedCardOverlay() {
           <span className="ml-auto">
             {new Date(node.created_at).toLocaleString()}
           </span>
-          {!isStreaming && (
+          {!isStreaming && !readOnly && (
             <button
               type="button"
               onClick={() => {
@@ -152,17 +153,19 @@ export function ExpandedCardOverlay() {
               Regenerate
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              setDeletingNodes([node.id]);
-              setExpandedNode(null);
-            }}
-            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium text-destructive hover:bg-destructive/10"
-          >
-            <Trash2 className="size-3" />
-            Delete
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => {
+                setDeletingNodes([node.id]);
+                setExpandedNode(null);
+              }}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3" />
+              Delete
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

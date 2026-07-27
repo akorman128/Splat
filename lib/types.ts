@@ -12,6 +12,24 @@ export type ConversationRow =
 // titled — by the user or by the root card's auto-title.
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
 
+// What a card needs to render. The public share view is served a node without
+// its owner's user_id, so nothing on the canvas may depend on that column.
+export type CardNode = Omit<NodeRow, "user_id">;
+
+// The payload of the shared_conversation() RPC — one shared canvas, read-only.
+export type SharedConversation = {
+  conversation: {
+    id: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
+    shared_at: string;
+  };
+  nodes: CardNode[];
+  edges: ContextEdgeRow[];
+  suggestions: SuggestionRow[];
+};
+
 export type CredentialSummary = {
   provider: Provider;
   key_last4: string;

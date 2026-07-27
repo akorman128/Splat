@@ -6,14 +6,14 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { ancestorsOf } from "@/lib/graph/ancestors";
 import { topoOrder } from "@/lib/graph/topo-order";
 import { estimateTokens } from "@/lib/tokens";
-import type { NodeRow } from "@/lib/types";
+import type { CardNode } from "@/lib/types";
 
 export function ContextPicker({
   parent,
   checked,
   onToggle,
 }: {
-  parent: NodeRow;
+  parent: CardNode;
   checked: Record<string, boolean>;
   onToggle: (nodeId: string, value: boolean) => void;
 }) {

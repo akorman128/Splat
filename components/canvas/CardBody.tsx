@@ -31,6 +31,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
   const setHoveredNode = useGraphStore((s) => s.setHoveredNode);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
+  const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const isRegenerateTarget = useComposerStore(
     (s) => s.regenerateNodeId === nodeId,
@@ -62,7 +63,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           <span className="flex-1 truncate text-lg font-semibold">
             {node.title ?? (isStreaming ? "Thinking…" : "Untitled")}
           </span>
-          {!isStreaming && (
+          {!isStreaming && !readOnly && (
             <button
               type="button"
               title={
@@ -90,15 +91,17 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           >
             <Maximize2 className="size-3.5" />
           </button>
-          <button
-            type="button"
-            title="Delete card"
-            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            onPointerDown={stop}
-            onClick={() => setDeletingNodes([nodeId])}
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              title="Delete card"
+              className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              onPointerDown={stop}
+              onClick={() => setDeletingNodes([nodeId])}
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="border-b bg-muted/40 px-3 py-2">

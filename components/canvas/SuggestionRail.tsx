@@ -11,10 +11,13 @@ const stop = (e: React.PointerEvent) => e.stopPropagation();
 export function SuggestionRail({ nodeId }: { nodeId: string }) {
   const suggestions = useGraphStore((s) => s.suggestions[nodeId]);
   const status = useGraphStore((s) => s.nodes[nodeId]?.status);
+  // Chips are prompts waiting to be sent — nothing a shared canvas can do.
+  const readOnly = useGraphStore((s) => s.readOnly);
 
   if (!suggestions || suggestions.length === 0 || status !== "complete") {
     return null;
   }
+  if (readOnly) return null;
 
   return (
     <div
