@@ -23,9 +23,11 @@ import type { ConversationSummary } from "./ConversationList";
 
 export function ShareDialog({
   conversation,
+  onTokenChange,
   onOpenChange,
 }: {
   conversation: ConversationSummary | null;
+  onTokenChange: (token: string | null) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
@@ -51,7 +53,9 @@ export function ShareDialog({
     if (!conversation) return;
     startTransition(async () => {
       try {
-        setToken(await shareConversation(conversation.id));
+        const minted = await shareConversation(conversation.id);
+        setToken(minted);
+        onTokenChange(minted);
         router.refresh();
       } catch (error) {
         toast.error("Could not create the link", {
@@ -68,6 +72,7 @@ export function ShareDialog({
         await unshareConversation(conversation.id);
         setToken(null);
         setCopied(false);
+        onTokenChange(null);
         router.refresh();
         toast.success("Sharing stopped", {
           description: "The old link no longer opens this conversation.",

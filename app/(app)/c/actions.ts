@@ -49,6 +49,22 @@ export async function shareConversation(
     redirect("/login");
   }
 
+  const token = randomBytes(18).toString("base64url");
+  const { data: minted, error } = await supabase
+    .from("conversations")
+    .update({ share_token: token, shared_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .is("share_token", null)
+    .select("share_token")
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Could not share the conversation: ${error.message}`);
+  }
+  if (minted?.share_token) {
+    revalidatePath("/c", "layout");
+    return minted.share_token;
+  }
+
   const { data: existing, error: readError } = await supabase
     .from("conversations")
     .select("share_token")
@@ -57,22 +73,10 @@ export async function shareConversation(
   if (readError) {
     throw new Error(`Could not read the conversation: ${readError.message}`);
   }
-  if (!existing) {
+  if (!existing?.share_token) {
     throw new Error("Conversation not found");
   }
-  if (existing.share_token) return existing.share_token;
-
-  const token = randomBytes(18).toString("base64url");
-  const { error } = await supabase
-    .from("conversations")
-    .update({ share_token: token, shared_at: new Date().toISOString() })
-    .eq("id", conversationId);
-  if (error) {
-    throw new Error(`Could not share the conversation: ${error.message}`);
-  }
-
-  revalidatePath("/c", "layout");
-  return token;
+  return existing.share_token;
 }
 
 export async function unshareConversation(conversationId: string) {
@@ -82,12 +86,17 @@ export async function unshareConversation(conversationId: string) {
     redirect("/login");
   }
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("conversations")
     .update({ share_token: null, shared_at: null })
-    .eq("id", conversationId);
+    .eq("id", conversationId)
+    .select("id")
+    .maybeSingle();
   if (error) {
     throw new Error(`Could not stop sharing: ${error.message}`);
+  }
+  if (!updated) {
+    throw new Error("Conversation not found");
   }
 
   revalidatePath("/c", "layout");

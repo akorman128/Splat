@@ -191,9 +191,16 @@ export default function Canvas() {
   // is lifted for the reconcile and put back once the shapes are in.
   useEffect(() => {
     if (!editor) return;
-    if (readOnly) editor.updateInstanceState({ isReadonly: false });
-    reconcile(editor, nodes, edges, removing);
-    if (readOnly) editor.updateInstanceState({ isReadonly: true });
+    if (!readOnly) {
+      reconcile(editor, nodes, edges, removing);
+      return;
+    }
+    editor.updateInstanceState({ isReadonly: false });
+    try {
+      reconcile(editor, nodes, edges, removing);
+    } finally {
+      editor.updateInstanceState({ isReadonly: true });
+    }
   }, [editor, nodes, edges, readOnly]);
 
   useEffect(() => {

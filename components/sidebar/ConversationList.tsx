@@ -71,10 +71,10 @@ export function AppSidebar({
   );
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [shown, applyRename] = useOptimistic(
+  const [shown, applyUpdate] = useOptimistic(
     conversations,
-    (list: ConversationSummary[], renamed: ConversationSummary) =>
-      list.map((c) => (c.id === renamed.id ? renamed : c)),
+    (list: ConversationSummary[], updated: ConversationSummary) =>
+      list.map((c) => (c.id === updated.id ? updated : c)),
   );
 
   async function newConversation() {
@@ -127,7 +127,7 @@ export function AppSidebar({
     setRenamingId(null);
     if (!title || title === c.title) return;
     startTransition(async () => {
-      applyRename({ ...c, title });
+      applyUpdate({ ...c, title });
       const supabase = createClient();
       const { error } = await supabase
         .from("conversations")
@@ -284,6 +284,9 @@ export function AppSidebar({
 
       <ShareDialog
         conversation={shareTarget}
+        onTokenChange={(share_token) => {
+          if (shareTarget) applyUpdate({ ...shareTarget, share_token });
+        }}
         onOpenChange={(open) => {
           if (!open) setShareTarget(null);
         }}
