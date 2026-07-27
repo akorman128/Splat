@@ -59,7 +59,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           {isStreaming && (
             <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
           )}
-          <span className="flex-1 truncate text-sm font-semibold">
+          <span className="flex-1 truncate text-lg font-semibold">
             {node.title ?? (isStreaming ? "Thinking…" : "Untitled")}
           </span>
           {!isStreaming && (
