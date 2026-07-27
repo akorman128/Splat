@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronUp,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,6 +87,7 @@ export function ExpandedCardOverlay() {
   const expandedNodeId = useGraphStore((s) => s.expandedNodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
   const nodes = useGraphStore((s) => s.nodes);
+  const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const { node, responseText, contextCount, isError, isStreaming } =
     useCardState(expandedNodeId);
@@ -179,6 +181,17 @@ export function ExpandedCardOverlay() {
               Regenerate
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              setDeletingNodes([node.id]);
+              setExpandedNode(null);
+            }}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="size-3" />
+            Delete
+          </button>
         </div>
       </DialogContent>
     </Dialog>

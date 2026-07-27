@@ -3,7 +3,7 @@
 import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Maximize2, RefreshCw } from "lucide-react";
+import { Loader2, Maximize2, RefreshCw, Trash2 } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { estimateTokens } from "@/lib/tokens";
@@ -17,6 +17,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const { node, responseText, contextCount, isStreaming, isError } =
     useCardState(nodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
+  const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const isRegenerateTarget = useComposerStore(
     (s) => s.regenerateNodeId === nodeId,
@@ -71,6 +72,15 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
             onClick={() => setExpandedNode(nodeId)}
           >
             <Maximize2 className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Delete card"
+            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            onPointerDown={stop}
+            onClick={() => setDeletingNodes([nodeId])}
+          >
+            <Trash2 className="size-3.5" />
           </button>
         </div>
 
