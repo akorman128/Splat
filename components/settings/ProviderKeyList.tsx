@@ -2,10 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { ProviderKeyForm } from "./ProviderKeyForm";
 import { PROVIDERS } from "@/lib/providers/models";
 
-// One key form per supported provider, with the currently connected last4
-// filled in. Shared by /settings and /onboarding, which previously carried
-// byte-identical copies of this query and map.
-
 export async function ProviderKeyList() {
   const supabase = await createClient();
   const { data: creds } = await supabase
@@ -27,7 +23,6 @@ export async function ProviderKeyList() {
   );
 }
 
-/** Whether the signed-in user has connected at least one provider key. */
 export async function hasAnyProviderKey(): Promise<boolean> {
   const supabase = await createClient();
   const { count } = await supabase

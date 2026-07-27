@@ -16,17 +16,9 @@ const OPTIONS = [
   { value: "system", label: "System", Icon: Monitor },
 ] as const;
 
-/**
- * Theme picker for the account menu. Light / Dark / System, with System the
- * default — the palette in globals.css is applied by next-themes putting the
- * `.dark` class on <html> (see components/theme-provider.tsx).
- */
 export function ThemeMenu() {
   const { theme, resolvedTheme, setTheme } = useTheme();
 
-  // No mounted-flag dance here: this lives inside the account menu's popup,
-  // which base-ui only mounts once the menu is opened. By then next-themes has
-  // long since resolved, so there is no server render to disagree with.
   const TriggerIcon = resolvedTheme === "dark" ? Moon : Sun;
 
   return (

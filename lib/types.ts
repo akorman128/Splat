@@ -15,7 +15,6 @@ export type CredentialSummary = {
 
 export type NodeStatus = "pending" | "streaming" | "complete" | "error";
 
-/** NDJSON events emitted by /api/chat. */
 export type ChatStreamEvent =
   | { type: "node"; node: NodeRow; edges: ContextEdgeRow[] }
   | { type: "delta"; text: string }

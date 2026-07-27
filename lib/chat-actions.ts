@@ -10,15 +10,6 @@ import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition } from "@/lib/layout";
 import type { SuggestionRow } from "@/lib/types";
 
-/**
- * Marks a suggestion as taken. Optimistic in the graph store and never
- * awaited, so a click starts its stream immediately; a failure only means the
- * chip loses its tick on the next reload.
- *
- * The failure is reported from inside the mutation function rather than an
- * `onError` handler because the chip can unmount while the write is in
- * flight — the request survives that, an observer callback does not.
- */
 function useMarkSuggestionTaken() {
   return useMutation({
     mutationFn: async ({ id, takenAt }: { id: string; takenAt: string }) => {
@@ -33,12 +24,6 @@ function useMarkSuggestionTaken() {
   });
 }
 
-/**
- * Clicking a suggestion chip submits it as the next prompt with that card as
- * parent and the default context (full path from the card back to its root),
- * and marks the suggestion as taken. Stays pending for the whole stream, so
- * the chip that started it reads `isPending` as its own busy state.
- */
 export function useSubmitSuggestion() {
   const chat = useChatStream();
   const markTaken = useMarkSuggestionTaken();
@@ -70,8 +55,6 @@ export function useSubmitSuggestion() {
           contextNodeIds,
           prompt: suggestion.text,
           provider,
-          // Same selection the composer would send — for a catalogue provider
-          // that is whatever the user picked, not the provider's default.
           model: model ?? defaultModel(provider),
           canvasX: position.x,
           canvasY: position.y,

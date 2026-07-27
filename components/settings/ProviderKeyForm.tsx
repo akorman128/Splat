@@ -25,9 +25,6 @@ export function ProviderKeyForm({
   const router = useRouter();
   const [key, setKey] = useState("");
 
-  // The connected keys are read on the server by ProviderKeyList, so a write
-  // is published by re-rendering that tree rather than by invalidating a
-  // client cache.
   const save = useMutation({
     mutationFn: (apiKey: string) =>
       apiFetch("/api/credentials", postJson({ provider, key: apiKey })),
@@ -42,9 +39,6 @@ export function ProviderKeyForm({
     mutationFn: () =>
       apiFetch(`/api/credentials?provider=${provider}`, { method: "DELETE" }),
     onSuccess: () => {
-      // A failed save leaves its message under the form until the next save.
-      // Removing the key answers that message, so clear it rather than let it
-      // sit there contradicting the toast.
       save.reset();
       toast.success(`${PROVIDER_LABELS[provider]} key removed`);
       router.refresh();

@@ -2,8 +2,6 @@ import type { JWK } from "@supabase/supabase-js";
 
 const JWKS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
 const TTL_MS = 10 * 60 * 1000;
-// The proxy awaits this before anything else, so a failing endpoint must not be
-// retried per request.
 const FAILURE_TTL_MS = 30 * 1000;
 const TIMEOUT_MS = 2_000;
 
@@ -27,11 +25,6 @@ async function load(): Promise<JWK[]> {
   return body.keys as JWK[];
 }
 
-/**
- * Signing keys for local JWT verification, or undefined if they cannot be
- * fetched — in which case supabase-js falls back to asking the Auth server,
- * which is correct but slower. Never throws.
- */
 export async function signingKeys(): Promise<{ keys: JWK[] } | undefined> {
   const now = Date.now();
   if (cached && now - cached.at < TTL_MS) {

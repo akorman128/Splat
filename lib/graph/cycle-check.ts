@@ -1,13 +1,5 @@
 import { ancestorsOf, type GraphEdgeRef, type GraphNodeRef } from "./ancestors";
 
-/**
- * Validate the context set for a node being created. Context sources must
- * all be ancestors of the new node — i.e. the parent itself or an ancestor
- * of the parent — which makes the resulting graph acyclic by construction
- * (a brand-new node has no descendants). A DB trigger backstops this.
- *
- * Returns null when valid, otherwise a human-readable problem.
- */
 export function validateContextSelection({
   parentId,
   contextNodeIds,

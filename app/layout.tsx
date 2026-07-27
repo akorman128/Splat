@@ -27,8 +27,6 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // suppressHydrationWarning: next-themes sets the theme class on <html>
-    // from a pre-hydration script, so the server markup is expected to differ.
     <html
       lang="en"
       suppressHydrationWarning

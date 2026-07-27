@@ -5,10 +5,6 @@ import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ProviderAdapter, StreamEvent } from "./types";
 
-// GPT-5.6-series models are served via the Responses API.
-// Sampling params (temperature) are omitted throughout: current reasoning
-// models reject or ignore non-default values.
-
 function client(apiKey: string): OpenAI {
   return new OpenAI({ apiKey });
 }
@@ -55,7 +51,6 @@ export const openaiAdapter: ProviderAdapter = {
           event.response.error?.message ?? "OpenAI reported a failed response",
         );
       } else if (event.type === "response.incomplete") {
-        // Keep whatever streamed; surface the cause.
         throw new Error(
           `OpenAI response incomplete: ${event.response.incomplete_details?.reason ?? "unknown reason"}`,
         );
@@ -66,16 +61,11 @@ export const openaiAdapter: ProviderAdapter = {
   },
 
   async generateFollowups({ apiKey, prompt, response }) {
-    // responses.parse (not .create) so the SDK decodes and validates into
-    // output_parsed. JSON.parse(res.output_text) threw an opaque SyntaxError
-    // whenever output_text came back empty — which happens when the whole
-    // budget below goes to reasoning tokens.
     const call = async (model: string) => {
       const res = await client(apiKey).responses.parse({
         model,
         input: [{ role: "user", content: followupsPrompt(prompt, response) }],
         text: { format: zodTextFormat(FollowupsSchema, "followups") },
-        // Low output budget per spec — enough headroom for reasoning tokens.
         max_output_tokens: 2000,
       });
       return toStructured(res.output_parsed);
@@ -85,7 +75,6 @@ export const openaiAdapter: ProviderAdapter = {
       return await call(MODELS.openai.utility);
     } catch (err) {
       if (err instanceof OpenAI.NotFoundError) {
-        // Utility model unavailable on this account — fall back one tier up.
         console.warn(
           `[providers/openai] utility model ${MODELS.openai.utility} unavailable; falling back to ${MODELS.openai.conversation}`,
         );

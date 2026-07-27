@@ -3,20 +3,10 @@
 import { create } from "zustand";
 import type { ContextEdgeRow, NodeRow, SuggestionRow } from "@/lib/types";
 
-// Application state for the loaded conversation. Supabase is the source of
-// truth for graph semantics; this store mirrors it on the client. tldraw
-// shapes hold only a nodeId and read everything else from here.
-
 type GraphState = {
   conversationId: string | null;
   nodes: Record<string, NodeRow>;
   edges: ContextEdgeRow[];
-  /**
-   * How many context sources each node consumes, derived from `edges` and kept
-   * in step with it. Cards render this in their footer, so deriving it with a
-   * `s.edges.filter(...)` selector meant every mounted card rescanned the whole
-   * edge list on every store write — O(cards x edges) per streamed node event.
-   */
   contextCounts: Record<string, number>;
   suggestions: Record<string, SuggestionRow[]>;
   selectedNodeId: string | null;

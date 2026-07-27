@@ -1,6 +1,3 @@
-// Pure graph helpers shared by the client (context picker) and the server
-// (context validation). The DAG's edge set is the union of parent links and
-// explicit context edges; both always point from an older node to a newer one.
 
 export type GraphNodeRef = {
   id: string;
@@ -9,14 +6,10 @@ export type GraphNodeRef = {
 };
 
 export type GraphEdgeRef = {
-  node_id: string; // the consumer (child)
-  source_node_id: string; // the ancestor
+  node_id: string;
+  source_node_id: string;
 };
 
-/**
- * Every ancestor of `nodeId` reachable via parent links or context edges.
- * Does not include `nodeId` itself.
- */
 export function ancestorsOf(
   nodeId: string,
   nodes: GraphNodeRef[],
@@ -48,10 +41,6 @@ export function ancestorsOf(
   return result;
 }
 
-/**
- * The parent chain from `nodeId` back to its root, oldest first,
- * including `nodeId` itself. This is the default context set.
- */
 export function parentChain(
   nodeId: string,
   nodes: GraphNodeRef[],

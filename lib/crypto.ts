@@ -1,10 +1,6 @@
 import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-// AES-256-GCM for provider API keys at rest. The key lives only in server env
-// (APP_ENCRYPTION_KEY, 32 bytes base64). Ciphertext format:
-// base64(iv) . base64(authTag) . base64(ciphertext)
-
 function encryptionKey(): Buffer {
   const raw = process.env.APP_ENCRYPTION_KEY;
   if (!raw) {

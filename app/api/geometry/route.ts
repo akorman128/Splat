@@ -2,18 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { authClaims } from "@/lib/supabase/claims";
 
-// Card geometry is normally persisted straight from the browser's Supabase
-// client, debounced (see components/canvas/Canvas.tsx). That path cannot work
-// while the page is being torn down: an ordinary fetch is cancelled the moment
-// the document unloads, so a drag followed immediately by a reload lost the
-// new position. `navigator.sendBeacon` is the transport that survives unload,
-// and it needs a same-origin URL to post to — this one. RLS still applies:
-// nodes_all_own restricts the update to the caller's own rows.
-
 type GeometryUpdate = { id: string; x: number; y: number; w: number; h: number };
 
-// A canvas that has been dragged around a lot still only has as many pending
-// entries as it has cards; anything past this is not a real client.
 const MAX_UPDATES = 200;
 
 function isGeometryUpdate(value: unknown): value is GeometryUpdate {

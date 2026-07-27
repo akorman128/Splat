@@ -4,9 +4,6 @@ import {
 } from "@/components/settings/ProviderKeyList";
 import { OnboardingActions } from "./OnboardingActions";
 
-// One-time onboarding step after sign-in: connect an OpenAI, Anthropic and/or
-// OpenRouter key. Skippable — the composer renders a disabled state until a
-// key exists.
 export default async function OnboardingPage() {
   const hasKey = await hasAnyProviderKey();
 

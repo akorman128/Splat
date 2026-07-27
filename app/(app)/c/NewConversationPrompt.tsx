@@ -5,8 +5,6 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createFirstConversation } from "./actions";
 
-// useFormStatus has to read the status of a form it sits *inside*, so the
-// button is its own component.
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -17,10 +15,6 @@ function SubmitButton() {
   );
 }
 
-/**
- * Empty state for a user with no conversations. The button POSTs a Server
- * Action; creation never happens as a side effect of rendering /c.
- */
 export function NewConversationPrompt() {
   return (
     <div className="flex flex-1 items-center justify-center px-6">

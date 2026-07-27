@@ -18,12 +18,6 @@ import { apiFetch } from "@/lib/query/api";
 import { queryKeys } from "@/lib/query/keys";
 import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/providers/models";
 
-// Searchable picker over a catalogue provider's model list. Only rendered for
-// providers where the model is the user's choice rather than a pinned id
-// (hasModelCatalog) — OpenRouter serves a few hundred, so this is a filtered
-// dialog rather than another entry in the provider dropdown.
-
-/** Rendering every match at once janks the dialog; matches beyond this are counted, not drawn. */
 const MAX_ROWS = 80;
 
 function formatTokens(tokens: number, suffix: string): string {
@@ -32,7 +26,6 @@ function formatTokens(tokens: number, suffix: string): string {
   return `${tokens} ${suffix}`;
 }
 
-/** Context window and, when the catalogue declares one, the output ceiling. */
 function formatLimits(model: CatalogModel): string | null {
   const parts: string[] = [];
   if (model.contextLength) parts.push(formatTokens(model.contextLength, "ctx"));
@@ -42,7 +35,6 @@ function formatLimits(model: CatalogModel): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-/** Catalogue prices are per token; per-million is the unit people compare in. */
 function formatPrice(model: CatalogModel): string | null {
   if (model.promptPrice === null && model.completionPrice === null) {
     return "variable pricing";
@@ -64,12 +56,6 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  // `enabled: open` fetches on first open rather than on mount: the composer
-  // is always on screen, and most sessions never open the picker. The
-  // catalogue is a few hundred KB and changes on the order of days, so once it
-  // lands it never goes stale — one fetch per tab, shared by every composer.
-  // A failed attempt leaves no data, which counts as stale, so reopening the
-  // dialog genuinely retries.
   const {
     data: models,
     error,
@@ -113,7 +99,6 @@ export function ModelPicker({
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          // Reopening on a stale filter hides the model the user came for.
           if (!next) setQuery("");
         }}
       >
@@ -135,9 +120,6 @@ export function ModelPicker({
           />
 
           <ScrollArea className="h-80">
-            {/* A failure is held in the cache until the retry resolves, so it
-                is only shown once nothing is in flight — otherwise reopening
-                the dialog reads as still-broken while it is retrying. */}
             {error && !isFetching ? (
               <p className="p-3 text-sm text-destructive">{error.message}</p>
             ) : !models ? (

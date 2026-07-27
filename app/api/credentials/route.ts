@@ -4,9 +4,6 @@ import { encryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
 import { isProvider } from "@/lib/providers/models";
 
-// These handlers read and overwrite stored BYOK keys, so they use getUser()
-// rather than a local claims check: a revoked token must not still reach them.
-
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -53,7 +50,6 @@ export async function POST(request: Request) {
   }
   const trimmedKey = key.trim();
 
-  // Round-trip the key against the provider's models endpoint before storing.
   const verification = await getAdapter(provider).verifyKey(trimmedKey);
   if (!verification.ok) {
     return NextResponse.json({ error: verification.message }, { status: 422 });
