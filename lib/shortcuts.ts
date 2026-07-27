@@ -1,5 +1,8 @@
 export const MOD = "mod" as const;
 
+export const SHORTCUTS_HINT =
+  "Card shortcuts act on the card under the pointer, or the selected one.";
+
 export type Shortcut = { keys: string[]; label: string };
 export type ShortcutGroup = { title: string; shortcuts: Shortcut[] };
 
@@ -33,13 +36,16 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     title: "Help",
-    shortcuts: [{ keys: [MOD, "/"], label: "Show this list" }],
+    shortcuts: [{ keys: [MOD, "/"], label: "Show the shortcut list" }],
   },
 ];
 
+export function modifierLabelFor(platform: string): string {
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
+}
+
 export function modifierLabel(): string {
-  const isApple =
-    typeof navigator !== "undefined" &&
-    /mac|iphone|ipad|ipod/i.test(navigator.userAgent);
-  return isApple ? "⌘" : "Ctrl";
+  return typeof navigator === "undefined"
+    ? "Ctrl"
+    : modifierLabelFor(navigator.userAgent);
 }
