@@ -12,6 +12,8 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
+  // getUser() rather than a local claims check: this spends the caller's
+  // provider key, so a revoked or signed-out token must not still authorise it.
   const {
     data: { user },
   } = await supabase.auth.getUser();

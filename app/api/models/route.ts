@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { authClaims } from "@/lib/supabase/claims";
 import { openRouterCatalog } from "@/lib/providers/catalog";
 import { hasModelCatalog, isProvider } from "@/lib/providers/models";
 
@@ -13,10 +14,8 @@ import { hasModelCatalog, isProvider } from "@/lib/providers/models";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  const claims = await authClaims(supabase);
+  if (!claims) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { authClaims } from "@/lib/supabase/claims";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/sidebar/ConversationList";
 
@@ -9,10 +10,9 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+
+  const claims = await authClaims(supabase);
+  if (!claims) {
     redirect("/login");
   }
 
@@ -25,7 +25,7 @@ export default async function AppLayout({
     <SidebarProvider>
       <AppSidebar
         conversations={conversations ?? []}
-        email={user.email ?? "account"}
+        email={claims.email ?? "account"}
       />
       <main className="relative flex h-dvh flex-1 flex-col overflow-hidden">
         <SidebarTrigger className="absolute left-2 top-2 z-50" />
