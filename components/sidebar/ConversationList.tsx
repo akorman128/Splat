@@ -11,6 +11,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -30,8 +31,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeMenu } from "@/components/theme-menu";
+import { useCreateSkill } from "@/components/skills/useCreateSkill";
 import { DownloadMenu } from "./DownloadMenu";
 import { ShareDialog } from "./ShareDialog";
+import type { SkillSummary } from "@/lib/types";
 import {
   ChevronsUpDown,
   Link2,
@@ -42,6 +45,7 @@ import {
   Plus,
   Settings,
   Share2,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 
@@ -54,11 +58,14 @@ export type ConversationSummary = {
 
 export function AppSidebar({
   conversations,
+  skills,
   email,
 }: {
   conversations: ConversationSummary[];
+  skills: SkillSummary[];
   email: string;
 }) {
+  const { create: newSkill, creating: creatingSkill } = useCreateSkill();
   const router = useRouter();
   const pathname = usePathname();
   const [creating, setCreating] = useState(false);
@@ -167,6 +174,48 @@ export function AppSidebar({
         </Button>
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel
+            render={
+              <Link
+                href="/skills"
+                className="hover:text-sidebar-accent-foreground"
+              />
+            }
+          >
+            Skills
+          </SidebarGroupLabel>
+          <SidebarGroupAction
+            title="New skill"
+            disabled={creatingSkill}
+            onClick={newSkill}
+          >
+            <Plus />
+            <span className="sr-only">New skill</span>
+          </SidebarGroupAction>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {skills.length === 0 && (
+                <p className="px-2 py-1 text-xs text-muted-foreground">
+                  No skills yet — save one to reuse it with{" "}
+                  <span className="font-mono">/</span>.
+                </p>
+              )}
+              {skills.map((skill) => (
+                <SidebarMenuItem key={skill.id}>
+                  <SidebarMenuButton
+                    isActive={pathname === `/skills/${skill.id}`}
+                    render={<Link href={`/skills/${skill.id}`} />}
+                  >
+                    <Sparkles className="size-4" />
+                    <span className="truncate">{skill.name}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>Conversations</SidebarGroupLabel>
           <SidebarGroupContent>

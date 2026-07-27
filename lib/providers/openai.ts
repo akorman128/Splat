@@ -25,12 +25,18 @@ export const openaiAdapter: ProviderAdapter = {
     }
   },
 
-  async *streamChat({ apiKey, model, messages }): AsyncGenerator<StreamEvent> {
+  async *streamChat({
+    apiKey,
+    model,
+    messages,
+    system,
+  }): AsyncGenerator<StreamEvent> {
     const stream = await client(apiKey).responses.create({
       model,
       input: messages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
       max_output_tokens: MAX_OUTPUT_TOKENS,
+      ...(system ? { instructions: system } : {}),
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {

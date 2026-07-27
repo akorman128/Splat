@@ -11,8 +11,14 @@ import {
 import { isKnownCatalogModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
 import { topoOrder } from "@/lib/graph/topo-order";
+import {
+  nodeSkills,
+  replaceNodeSkills,
+  resolveSkillIds,
+  skillSystemPrompt,
+} from "@/lib/skills/attachments";
 import type { ChatMessage } from "@/lib/providers/types";
-import type { ContextEdgeRow, NodeRow } from "@/lib/types";
+import type { AttachedSkill, ContextEdgeRow, NodeRow } from "@/lib/types";
 
 export const maxDuration = 300;
 
@@ -20,6 +26,7 @@ type NewChatBody = {
   conversationId: string;
   parentId: string | null;
   contextNodeIds: string[];
+  skillIds?: string[];
   prompt: string;
   provider: string;
   model: string;
@@ -34,6 +41,7 @@ type RegenerateBody = {
   prompt?: string;
   provider?: string;
   model?: string;
+  skillIds?: string[];
 };
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -90,6 +98,7 @@ export async function POST(request: Request) {
   let node: NodeRow;
   let nodeEdges: ContextEdgeRow[];
   let contextIds: string[];
+  let attachedSkills: AttachedSkill[];
   let conversationNodes: NodeRow[];
   let conversationEdges: ContextEdgeRow[];
   let apiKey: string;
@@ -185,6 +194,22 @@ export async function POST(request: Request) {
     }
     apiKey = rerunKey.apiKey;
 
+    // Omitting skillIds on a regenerate keeps whatever the card already
+    // carries; sending them (even empty) replaces the set.
+    const rerunSkillIds =
+      regenerating && Array.isArray(body.skillIds)
+        ? [...new Set(body.skillIds)]
+        : null;
+    if (rerunSkillIds) {
+      const selection = await resolveSkillIds(supabase, rerunSkillIds);
+      if (!selection.ok) {
+        return NextResponse.json({ error: selection.error }, { status: 400 });
+      }
+      attachedSkills = selection.skills;
+    } else {
+      attachedSkills = await nodeSkills(supabase, existing.id);
+    }
+
     const { data: reset, error: resetError } = await supabase
       .from("nodes")
       .update({
@@ -209,6 +234,17 @@ export async function POST(request: Request) {
       );
     }
     node = reset;
+
+    if (rerunSkillIds) {
+      const failure = await replaceNodeSkills(supabase, node.id, attachedSkills);
+      if (failure) {
+        await supabase
+          .from("nodes")
+          .update({ status: "error", error_message: failure })
+          .eq("id", node.id);
+        return NextResponse.json({ error: failure }, { status: 400 });
+      }
+    }
   } else {
     const {
       conversationId,
@@ -291,6 +327,15 @@ export async function POST(request: Request) {
 
     contextIds = topoOrder(contextNodeIds, conversationNodes, conversationEdges);
 
+    const selection = await resolveSkillIds(
+      supabase,
+      Array.isArray(body.skillIds) ? [...new Set(body.skillIds)] : [],
+    );
+    if (!selection.ok) {
+      return NextResponse.json({ error: selection.error }, { status: 400 });
+    }
+    attachedSkills = selection.skills;
+
     const newKey = await resolveApiKey(supabase, provider);
     if (!newKey.ok) {
       return NextResponse.json({ error: newKey.error }, { status: newKey.status });
@@ -339,6 +384,16 @@ export async function POST(request: Request) {
     } else {
       nodeEdges = [];
     }
+
+    const skillFailure = await replaceNodeSkills(
+      supabase,
+      node.id,
+      attachedSkills,
+    );
+    if (skillFailure) {
+      await supabase.from("nodes").delete().eq("id", node.id);
+      return NextResponse.json({ error: skillFailure }, { status: 400 });
+    }
   }
 
   const provider = node.provider as Provider;
@@ -354,6 +409,8 @@ export async function POST(request: Request) {
     }
   }
   messages.push({ role: "user", content: node.prompt });
+
+  const system = skillSystemPrompt(attachedSkills);
 
   const adapter = getAdapter(provider);
   const encoder = new TextEncoder();
@@ -397,6 +454,7 @@ export async function POST(request: Request) {
           apiKey,
           model: node.model,
           messages,
+          system,
         })) {
           if (cancelled) {
             throw new Error("Generation interrupted: connection closed");

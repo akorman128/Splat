@@ -29,14 +29,14 @@ const OUTPUT_RESERVE_TOKENS = 512;
 const MIN_OUTPUT_TOKENS = 256;
 const FOLLOWUPS_MAX_TOKENS = 2000;
 
-function estimatePromptTokens(messages: ChatMessage[]): number {
+function estimatePromptTokens(messages: { content: string }[]): number {
   const chars = messages.reduce((n, m) => n + m.content.length, 0);
   return Math.ceil(chars / 4) + messages.length * 8;
 }
 
 async function outputBudget(
   model: string,
-  messages: ChatMessage[],
+  messages: { content: string }[],
 ): Promise<number | undefined> {
   const entry = await catalogEntry("openrouter", model);
   if (!entry) return undefined;
@@ -140,13 +140,21 @@ export const openrouterAdapter: ProviderAdapter = {
     }
   },
 
-  async *streamChat({ apiKey, model, messages }): AsyncGenerator<StreamEvent> {
+  async *streamChat({
+    apiKey,
+    model,
+    messages,
+    system,
+  }): AsyncGenerator<StreamEvent> {
+    const sent = system
+      ? [{ role: "system" as const, content: system }, ...messages]
+      : messages;
     const stream = await client(apiKey).chat.completions.create({
       model,
-      messages,
+      messages: sent,
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: await outputBudget(model, messages),
+      max_tokens: await outputBudget(model, sent),
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {

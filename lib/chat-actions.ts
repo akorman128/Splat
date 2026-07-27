@@ -44,6 +44,17 @@ export function useSubmitSuggestion() {
       const contextNodeIds = parentChain(parent.id, allNodes);
       const position = childPosition(parent, allNodes);
 
+      // A follow-up inherits the card's skills for the same reason it inherits
+      // its context: it continues that line of thinking.
+      const { data: parentSkills } = await createClient()
+        .from("node_skills")
+        .select("skill_id")
+        .eq("node_id", parent.id)
+        .order("position");
+      const skillIds = (parentSkills ?? [])
+        .map((row) => row.skill_id)
+        .filter((id): id is string => id !== null);
+
       const takenAt = new Date().toISOString();
       graph.markSuggestionTaken(suggestion.id, takenAt);
       markTaken.mutate({ id: suggestion.id, takenAt });
@@ -53,6 +64,7 @@ export function useSubmitSuggestion() {
           conversationId: graph.conversationId,
           parentId: parent.id,
           contextNodeIds,
+          skillIds,
           prompt: suggestion.text,
           provider,
           model: model ?? defaultModel(provider),

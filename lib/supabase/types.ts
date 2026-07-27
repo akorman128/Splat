@@ -158,6 +158,48 @@ export type Database = {
           },
         ]
       }
+      node_skills: {
+        Row: {
+          id: string
+          instructions: string
+          name: string
+          node_id: string
+          position: number
+          skill_id: string | null
+        }
+        Insert: {
+          id?: string
+          instructions: string
+          name: string
+          node_id: string
+          position: number
+          skill_id?: string | null
+        }
+        Update: {
+          id?: string
+          instructions?: string
+          name?: string
+          node_id?: string
+          position?: number
+          skill_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_skills_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_skills_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -202,6 +244,33 @@ export type Database = {
           key_last4?: string
           label?: string | null
           provider?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      skills: {
+        Row: {
+          created_at: string
+          id: string
+          instructions: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instructions?: string
+          name: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instructions?: string
+          name?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

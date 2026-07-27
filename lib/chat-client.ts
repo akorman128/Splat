@@ -12,6 +12,7 @@ export type SubmitParams = {
   conversationId: string;
   parentId: string | null;
   contextNodeIds: string[];
+  skillIds: string[];
   prompt: string;
   provider: Provider;
   model: string;
@@ -24,6 +25,7 @@ export type RegenerateParams = {
   prompt: string;
   provider: Provider;
   model: string;
+  skillIds: string[];
 };
 
 export type ChatStreamVariables = {

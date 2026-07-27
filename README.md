@@ -103,21 +103,39 @@ enumerate shared rows. The viewer renders the same canvas with `readOnly` set on
 the graph store: no composer, no card actions, no geometry writes, and tldraw
 itself in `isReadonly` mode.
 
+### Skills
+
+A skill is a named block of reusable instructions, kept in the sidebar above
+your conversations and written on `/skills`. Type `/` in the prompt box to
+attach one: it becomes a chip above the textarea, and its text is sent as the
+model's system instructions — so it steers the answer without becoming part of
+the card's prompt. Follow-up chips inherit the card's skills the same way they
+inherit its context, and a regeneration starts from the set the card was made
+with, editable before it runs.
+
+`node_skills` records what actually went into a card and snapshots the name and
+instructions alongside the `skill_id`. Editing a skill and regenerating picks up
+the new text; deleting one leaves the cards it made intact. Skills are
+deliberately absent from `shared_conversation()` — a share link hands out the
+canvas, never the instructions behind it.
+
 ### Where things live
 
 | Path | What's in it |
 | --- | --- |
 | `app/api/chat/` | The main event: validates the model, builds the message list, streams |
 | `app/api/{credentials,models,suggestions,geometry}/` | Key management, OpenRouter catalogue, titles + chips, position writes |
+| `app/(app)/skills/` | Skill list, editor, and the server actions behind them |
 | `lib/providers/` | One adapter per provider behind a 3-method interface |
 | `lib/graph/` | Pure functions: ancestors, descendants, topological order, cycle check |
+| `lib/skills/` | Resolving a prompt's skills and folding them into a system prompt |
 | `lib/store/` | zustand: composer state, graph cache, in-flight stream text |
 | `components/canvas/` | tldraw shape util, card rendering, overlay, keyboard nav |
-| `components/composer/` | Prompt box, provider/model picker, context checkboxes |
+| `components/composer/` | Prompt box, provider/model picker, context checkboxes, skill picker |
 | `supabase/migrations/` | Schema, RLS policies, triggers |
 
 Tables: `profiles`, `provider_creds`, `conversations`, `nodes`, `context_edges`,
-`suggestions`.
+`suggestions`, `skills`, `node_skills`.
 
 ## Good first contributions
 

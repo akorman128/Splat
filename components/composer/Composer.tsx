@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowUp, ChevronDown, GitBranch, RefreshCw, X } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronDown,
+  GitBranch,
+  RefreshCw,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,8 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
+import { SkillMenu, matchSkills, skillTriggerAt, type SkillTrigger } from "./SkillMenu";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { useChatStream } from "@/lib/chat-client";
@@ -31,7 +40,7 @@ import {
   type Provider,
 } from "@/lib/providers/models";
 import { modifierLabel } from "@/lib/shortcuts";
-import type { CredentialSummary } from "@/lib/types";
+import type { CredentialSummary, SkillSummary } from "@/lib/types";
 
 function providerLabel(provider: Provider): string {
   return hasModelCatalog(provider)
@@ -41,10 +50,12 @@ function providerLabel(provider: Provider): string {
 
 export function Composer({
   credentials,
+  skills,
   centered = false,
   onHide,
 }: {
   credentials: CredentialSummary[];
+  skills: SkillSummary[];
   centered?: boolean;
   onHide?: () => void;
 }) {
@@ -53,7 +64,41 @@ export function Composer({
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [attached, setAttached] = useState<SkillSummary[]>([]);
+  const [trigger, setTrigger] = useState<SkillTrigger | null>(null);
+  const [highlight, setHighlight] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const matches = useMemo(
+    () =>
+      trigger
+        ? matchSkills(
+            skills,
+            trigger.query,
+            attached.map((s) => s.id),
+          )
+        : [],
+    [trigger, skills, attached],
+  );
+  const menuOpen = matches.length > 0;
+
+  function attach(skill: SkillSummary) {
+    if (!trigger) return;
+    const caret = trigger.from;
+    setPrompt(prompt.slice(0, trigger.from) + prompt.slice(trigger.to));
+    setAttached((current) => [...current, skill]);
+    setTrigger(null);
+    requestAnimationFrame(() => {
+      const field = textareaRef.current;
+      if (!field) return;
+      field.focus();
+      field.setSelectionRange(caret, caret);
+    });
+  }
+
+  function detach(skillId: string) {
+    setAttached((current) => current.filter((s) => s.id !== skillId));
+  }
 
   const provider = useComposerStore((s) => s.provider);
   const setProvider = useComposerStore((s) => s.setProvider);
@@ -91,17 +136,49 @@ export function Composer({
   }
 
   const [parkedDraft, setParkedDraft] = useState("");
+  const [parkedSkills, setParkedSkills] = useState<SkillSummary[]>([]);
   const [lastRegenerateId, setLastRegenerateId] = useState<string | null>(null);
   if (regenerateNodeId !== lastRegenerateId) {
     setLastRegenerateId(regenerateNodeId);
+    setTrigger(null);
     if (regenerateNodeId) {
-      if (lastRegenerateId === null) setParkedDraft(prompt);
+      if (lastRegenerateId === null) {
+        setParkedDraft(prompt);
+        setParkedSkills(attached);
+      }
       setPrompt(useGraphStore.getState().nodes[regenerateNodeId]?.prompt ?? "");
+      setAttached([]);
     } else {
       setPrompt(parkedDraft);
+      setAttached(parkedSkills);
       setParkedDraft("");
+      setParkedSkills([]);
     }
   }
+
+  // The skills a card was made with, so a regeneration starts from the same set
+  // and can be edited before it runs. A skill deleted since then has no id left
+  // to re-send and drops out of the set.
+  useEffect(() => {
+    if (!regenerateNodeId) return;
+    let active = true;
+    void createClient()
+      .from("node_skills")
+      .select("skill_id, name")
+      .eq("node_id", regenerateNodeId)
+      .order("position")
+      .then(({ data }) => {
+        if (!active || !data) return;
+        setAttached(
+          data
+            .filter((row) => row.skill_id !== null)
+            .map((row) => ({ id: row.skill_id as string, name: row.name })),
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [regenerateNodeId]);
 
   const connectedKey = connectedProviders.join(",");
   const parkedPick = useRef<{
@@ -167,6 +244,7 @@ export function Composer({
           prompt: text,
           provider,
           model: model ?? defaultModel(provider),
+          skillIds: attached.map((s) => s.id),
         },
         onNode: (node) => {
           setSending(false);
@@ -215,6 +293,7 @@ export function Composer({
           conversationId: graph.conversationId,
           parentId: parentNode?.id ?? null,
           contextNodeIds,
+          skillIds: attached.map((s) => s.id),
           prompt: text,
           provider,
           model: model ?? defaultModel(provider),
@@ -273,6 +352,29 @@ export function Composer({
         </p>
       )}
 
+      {attached.length > 0 && (
+        <div className={cn("flex flex-wrap gap-1 px-1", onHide && "pr-7")}>
+          {attached.map((skill) => (
+            <span
+              key={skill.id}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 py-0.5 pr-1 pl-2 text-[11px] font-medium"
+            >
+              <Sparkles className="size-3 text-primary" />
+              {skill.name}
+              <button
+                type="button"
+                title={`Remove ${skill.name}`}
+                onClick={() => detach(skill.id)}
+                className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="size-3" />
+                <span className="sr-only">Remove {skill.name}</span>
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {regenerateTarget ? (
         <div
           className={cn(
@@ -326,23 +428,68 @@ export function Composer({
         )
       )}
 
-      <Textarea
-        ref={textareaRef}
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            submit();
+      <div className="relative">
+        {menuOpen && (
+          <SkillMenu
+            matches={matches}
+            highlight={highlight}
+            onHighlight={setHighlight}
+            onPick={attach}
+          />
+        )}
+        <Textarea
+          ref={textareaRef}
+          value={prompt}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            setTrigger(
+              skillTriggerAt(
+                e.target.value,
+                e.target.selectionStart ?? e.target.value.length,
+              ),
+            );
+            setHighlight(0);
+          }}
+          onBlur={() => setTrigger(null)}
+          onKeyDown={(e) => {
+            if (menuOpen) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setHighlight((h) => (h + 1) % matches.length);
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setHighlight((h) => (h - 1 + matches.length) % matches.length);
+                return;
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                attach(matches[highlight] ?? matches[0]);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setTrigger(null);
+                return;
+              }
+            }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder={
+            regenerateNodeId
+              ? "Edit the prompt and regenerate, or Esc to cancel"
+              : skills.length > 0
+                ? "Prompt… (Enter to send, / for a skill)"
+                : "Prompt… (Enter to send, Shift+Enter for a new line)"
           }
-        }}
-        placeholder={
-          regenerateNodeId
-            ? "Edit the prompt and regenerate, or Esc to cancel"
-            : "Prompt… (Enter to send, Shift+Enter for a new line)"
-        }
-        className="max-h-40 min-h-16 resize-none"
-      />
+          className="max-h-40 min-h-16 resize-none"
+        />
+      </div>
 
       <div className="flex items-center gap-2">
         <Select

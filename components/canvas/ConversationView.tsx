@@ -17,6 +17,7 @@ import type {
   ContextEdgeRow,
   CredentialSummary,
   NodeRow,
+  SkillSummary,
   SuggestionRow,
 } from "@/lib/types";
 
@@ -28,12 +29,14 @@ export function ConversationView({
   edges,
   suggestions,
   credentials,
+  skills,
 }: {
   conversationId: string;
   nodes: NodeRow[];
   edges: ContextEdgeRow[];
   suggestions: SuggestionRow[];
   credentials: CredentialSummary[];
+  skills: SkillSummary[];
 }) {
   const initialized = useGraphStore((s) => s.conversationId === conversationId);
   const hasNodes = useGraphStore((s) => Object.keys(s.nodes).length > 0);
@@ -94,7 +97,11 @@ export function ConversationView({
                 </div>
               )}
               <div className={cn("pointer-events-auto", composerHidden && "hidden")}>
-                <Composer credentials={credentials} onHide={toggleComposer} />
+                <Composer
+                  credentials={credentials}
+                  skills={skills}
+                  onHide={toggleComposer}
+                />
               </div>
             </div>
           </div>
@@ -102,7 +109,7 @@ export function ConversationView({
       ) : (
         <div className="flex h-full items-center justify-center p-6">
           <div className="w-full max-w-xl">
-            <Composer credentials={credentials} centered />
+            <Composer credentials={credentials} skills={skills} centered />
           </div>
         </div>
       )}
