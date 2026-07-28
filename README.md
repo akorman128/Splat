@@ -106,7 +106,7 @@ itself in `isReadonly` mode.
 ### Skills
 
 A skill is a named block of reusable instructions, kept in the sidebar above
-your conversations and written on `/skills`. Type `/` in the prompt box to
+your conversations and written in a dialog you open from there. Type `/` in the prompt box to
 attach one: it becomes a chip above the textarea, and its text is sent as the
 model's system instructions — so it steers the answer without becoming part of
 the card's prompt. Follow-up chips inherit the card's skills the same way they
@@ -125,7 +125,7 @@ canvas, never the instructions behind it.
 | --- | --- |
 | `app/api/chat/` | The main event: validates the model, builds the message list, streams |
 | `app/api/{credentials,models,suggestions,geometry}/` | Key management, OpenRouter catalogue, titles + chips, position writes |
-| `app/(app)/skills/` | Skill list, editor, and the server actions behind them |
+| `app/(app)/skills/` | The server actions behind creating, editing, and deleting a skill |
 | `lib/providers/` | One adapter per provider behind a 3-method interface |
 | `lib/graph/` | Pure functions: ancestors, descendants, topological order, cycle check |
 | `lib/skills/` | Resolving a prompt's skills and folding them into a system prompt |
