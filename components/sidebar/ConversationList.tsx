@@ -31,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeMenu } from "@/components/theme-menu";
-import { useCreateSkill } from "@/components/skills/useCreateSkill";
+import { SkillDialog, type SkillTarget } from "@/components/skills/SkillDialog";
 import { DownloadMenu } from "./DownloadMenu";
 import { ShareDialog } from "./ShareDialog";
 import type { SkillSummary } from "@/lib/types";
@@ -65,10 +65,10 @@ export function AppSidebar({
   skills: SkillSummary[];
   email: string;
 }) {
-  const { create: newSkill, creating: creatingSkill } = useCreateSkill();
   const router = useRouter();
   const pathname = usePathname();
   const [creating, setCreating] = useState(false);
+  const [skillTarget, setSkillTarget] = useState<SkillTarget | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(
     null,
   );
@@ -175,20 +175,10 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel
-            render={
-              <Link
-                href="/skills"
-                className="hover:text-sidebar-accent-foreground"
-              />
-            }
-          >
-            Skills
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>Skills</SidebarGroupLabel>
           <SidebarGroupAction
             title="New skill"
-            disabled={creatingSkill}
-            onClick={newSkill}
+            onClick={() => setSkillTarget({ kind: "new" })}
           >
             <Plus />
             <span className="sr-only">New skill</span>
@@ -204,8 +194,13 @@ export function AppSidebar({
               {skills.map((skill) => (
                 <SidebarMenuItem key={skill.id}>
                   <SidebarMenuButton
-                    isActive={pathname === `/skills/${skill.id}`}
-                    render={<Link href={`/skills/${skill.id}`} />}
+                    isActive={
+                      skillTarget?.kind === "edit" &&
+                      skillTarget.skillId === skill.id
+                    }
+                    onClick={() =>
+                      setSkillTarget({ kind: "edit", skillId: skill.id })
+                    }
                   >
                     <Sparkles className="size-4" />
                     <span className="truncate">{skill.name}</span>
@@ -330,6 +325,13 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <SkillDialog
+        target={skillTarget}
+        onOpenChange={(open) => {
+          if (!open) setSkillTarget(null);
+        }}
+      />
 
       <ShareDialog
         conversation={shareTarget}

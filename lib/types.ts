@@ -15,7 +15,6 @@ export type NodeSkillRow = Database["public"]["Tables"]["node_skills"]["Row"];
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
 
 // Same idea for a freshly created skill, which is named before it is written.
-export const DEFAULT_SKILL_NAME = "New skill";
 export const MAX_SKILL_NAME_LENGTH = 60;
 
 // What a card needs to render. The public share view is served a node without
