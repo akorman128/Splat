@@ -76,8 +76,10 @@ export async function deleteAttachment(id: string): Promise<void> {
 // Objects first, rows second: the row is the only record of where the object
 // lives, and deleting a card or a conversation cascades the rows away. A
 // failure here is logged rather than thrown — losing a delete because storage
-// hiccuped would be worse than the leak, and /api/attachments/sweep reclaims
-// anything left behind.
+// hiccuped would be worse than the leak. This is the fast path, not the
+// guarantee: /api/attachments/sweep reclaims a whole conversation folder that
+// has no rows left, which is what a delete that got this far and no further
+// looks like.
 export async function purgeAttachmentObjects(
   scope: { nodeIds: string[] } | { conversationId: string },
 ): Promise<void> {
@@ -125,8 +127,9 @@ export async function fetchAttachmentUrls(
 }
 
 // Re-encoding a GIF drops every frame after the first, and an animation the
-// user chose to attach is worth more than the bytes it saves.
-function isResizable(file: File): boolean {
+// user chose to attach is worth more than the bytes it saves. Exported because
+// the size cap has to know whether a file is one we can still shrink.
+export function isResizable(file: File): boolean {
   return file.type.startsWith("image/") && file.type !== "image/gif";
 }
 

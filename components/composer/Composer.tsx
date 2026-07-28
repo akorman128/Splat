@@ -286,6 +286,15 @@ export function Composer({
     const text = prompt.trim();
     if (!text || !provider) return;
 
+    // Enter reaches submit() without passing the Send button, so the guard has
+    // to live here too: sending mid-upload would quietly leave the file out of
+    // the very prompt it was attached to, and the model would answer about a
+    // document it never received.
+    if (useAttachmentStore.getState().drafts.some((d) => d.status === "uploading")) {
+      toast.error("Still uploading — one moment.");
+      return;
+    }
+
     const graph = useGraphStore.getState();
     if (!graph.conversationId) return;
     const allNodes = Object.values(graph.nodes);
@@ -301,10 +310,20 @@ export function Composer({
     // Drafts are what this card is about to own; the checked ones are older
     // files being replayed. The route tells them apart by node_id, so they can
     // travel as one list.
+    //
+    // The checked set is filtered against what still exists for the same reason
+    // contextNodeIds is: deleting the card that owned a ticked file leaves its
+    // id checked with no row and no checkbox to untick, and the route answers
+    // every subsequent send with a 400.
+    const liveAttachmentIds = new Set(
+      Object.values(graph.attachments).flatMap((list) =>
+        list.map((a) => a.id),
+      ),
+    );
     const attachmentIds = [
       ...readyAttachmentIds(useAttachmentStore.getState().drafts),
       ...Object.entries(checkedAttachments)
-        .filter(([, value]) => value)
+        .filter(([id, value]) => value && liveAttachmentIds.has(id))
         .map(([id]) => id),
     ];
     const position = parentNode
@@ -331,8 +350,10 @@ export function Composer({
         onNode: () => {
           setSending(false);
           // The card owns them now — the composer lets go rather than deleting,
-          // which would take the card's own files with it.
-          useAttachmentStore.getState().released();
+          // which would take the card's own files with it. Only the ones that
+          // actually went: a file dropped while this card was streaming is not
+          // part of it and keeps its chip.
+          useAttachmentStore.getState().released(attachmentIds);
           setCheckedAttachments({});
         },
         onTitled: (_nodeId, isRoot) => {

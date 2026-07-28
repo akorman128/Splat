@@ -60,19 +60,45 @@ export async function POST(request: Request) {
     drafts = abandoned.length;
   }
 
-  // Objects with no row: a claim that failed and rolled back, or an insert that
-  // errored after the upload. Scoped to one conversation's folder because that
-  // is one list call, and it is the folder the caller is looking at anyway.
-  if (conversationId) {
-    const prefix = `${user.id}/${conversationId}`;
-    const [{ data: objects }, { data: rows }] = await Promise.all([
-      supabase.storage.from(ATTACHMENTS_BUCKET).list(prefix, { limit: 1000 }),
-      supabase
-        .from("attachments")
-        .select("storage_path")
-        .eq("conversation_id", conversationId),
-    ]);
-    const known = new Set((rows ?? []).map((row) => row.storage_path));
+  // Objects with no row: a claim that failed and rolled back, an insert that
+  // errored after the upload, or — the one that actually loses money — a
+  // conversation deleted before its objects were removed. That last case is
+  // unrecoverable from the rows, because the cascade takes every storage_path
+  // with the conversation, so the listing has to be the source of truth here
+  // rather than the table.
+  //
+  // Every folder under the user's prefix is one conversation. A folder with no
+  // surviving rows belongs to a conversation that no longer exists, and
+  // everything in it is reclaimable. The common case — no deleted
+  // conversations — costs one list call and one select.
+  const { data: folders } = await supabase.storage
+    .from(ATTACHMENTS_BUCKET)
+    .list(user.id, { limit: 1000 });
+  const { data: rows } = await supabase
+    .from("attachments")
+    .select("storage_path, conversation_id");
+
+  const known = new Set((rows ?? []).map((row) => row.storage_path));
+  const liveConversations = new Set(
+    (rows ?? []).map((row) => row.conversation_id),
+  );
+
+  // Supabase reports a pseudo-directory as an entry with a null id.
+  const conversationFolders = (folders ?? [])
+    .filter((entry) => entry.id === null)
+    .map((entry) => entry.name);
+  // The folder on screen is swept even when it holds no rows yet, so a failed
+  // first upload is reclaimed rather than waiting for the conversation to be
+  // deleted.
+  const sweepable = conversationFolders.filter(
+    (name) => !liveConversations.has(name) || name === conversationId,
+  );
+
+  for (const folder of sweepable) {
+    const prefix = `${user.id}/${folder}`;
+    const { data: objects } = await supabase.storage
+      .from(ATTACHMENTS_BUCKET)
+      .list(prefix, { limit: 1000 });
     const stale = (objects ?? [])
       .filter((object) => {
         // An upload in flight has no row yet; only objects old enough to have
@@ -88,7 +114,7 @@ export async function POST(request: Request) {
       .map((object) => `${prefix}/${object.name}`);
     if (stale.length > 0) {
       await supabase.storage.from(ATTACHMENTS_BUCKET).remove(stale);
-      orphans = stale.length;
+      orphans += stale.length;
     }
   }
 

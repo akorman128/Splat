@@ -130,6 +130,16 @@ export function basenameOf(filename: string): string {
   return base.toLowerCase();
 }
 
+// A leading dot is not an extension — `.gitignore` has none — so without this
+// every dotfile falls past the text allowlist and is rejected as an unknown
+// binary. The name up to the next dot is what the allowlist actually holds:
+// `.env` and `.env.local` both answer "env".
+export function dotfileName(filename: string): string {
+  const base = basenameOf(filename);
+  if (!base.startsWith(".")) return "";
+  return base.slice(1).split(".")[0];
+}
+
 export type Classification =
   | { ok: true; kind: AttachmentKind; mimeType: string }
   | { ok: false; message: string };
@@ -141,11 +151,22 @@ export function classify(filename: string, reported: string): Classification {
   const basename = basenameOf(filename);
   const mime = reported.split(";")[0].trim().toLowerCase();
 
-  if (TEXT_EXTENSIONS.has(extension) || TEXT_BASENAMES.has(basename)) {
+  const dotfile = dotfileName(filename);
+  if (
+    TEXT_EXTENSIONS.has(extension) ||
+    TEXT_BASENAMES.has(basename) ||
+    (dotfile !== "" &&
+      (TEXT_EXTENSIONS.has(dotfile) || TEXT_BASENAMES.has(dotfile)))
+  ) {
     return { ok: true, kind: "text", mimeType: "text/plain" };
   }
 
-  const imageMime = IMAGE_EXTENSIONS[extension];
+  // Own-property lookups only: these are object literals, so `x.constructor`
+  // would otherwise come back as the Object function — truthy, and passed
+  // straight through as a MIME type.
+  const imageMime = Object.hasOwn(IMAGE_EXTENSIONS, extension)
+    ? IMAGE_EXTENSIONS[extension]
+    : undefined;
   if (imageMime) return { ok: true, kind: "image", mimeType: imageMime };
   if (isImageMimeType(mime)) return { ok: true, kind: "image", mimeType: mime };
   if (mime.startsWith("image/")) {
@@ -178,7 +199,9 @@ export function classify(filename: string, reported: string): Classification {
       message: "Audio isn't supported. Attach a transcript as text instead.",
     };
   }
-  const legacy = LEGACY_OFFICE[extension];
+  const legacy = Object.hasOwn(LEGACY_OFFICE, extension)
+    ? LEGACY_OFFICE[extension]
+    : undefined;
   if (legacy) {
     return {
       ok: false,

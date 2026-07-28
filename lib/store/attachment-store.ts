@@ -6,10 +6,12 @@ import {
   UploadAbortedError,
   deleteAttachment,
   downscaleImage,
+  isResizable,
   nameForPastedFile,
   uploadAttachment,
 } from "@/lib/attachments-client";
 import { useGraphStore } from "@/lib/store/graph-store";
+import { useComposerStore } from "@/lib/store/composer-store";
 import {
   MAX_ATTACHMENTS_PER_TURN,
   SIZE_CAPS,
@@ -36,8 +38,11 @@ type AttachmentState = {
   drafts: DraftAttachment[];
   enqueue(files: File[], options?: { synthesiseNames?: boolean }): void;
   remove(localId: string): void;
-  // After a send: the rows now belong to a card, so the composer just lets go.
-  released(): void;
+  // After a send: the rows named here now belong to a card, so the composer
+  // lets go of them. Anything not on the list — an upload that started while
+  // the card was streaming — stays, because dropping it here would leave the
+  // object in the bucket with no chip and no owner.
+  released(sentAttachmentIds: string[]): void;
   // On leaving a conversation: in-flight uploads are pointless, and whatever
   // landed becomes an abandoned draft for the sweep to reclaim.
   reset(): void;
@@ -55,6 +60,17 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
   enqueue(files, options) {
     const conversationId = useGraphStore.getState().conversationId;
     if (!conversationId || files.length === 0) return;
+
+    // A regeneration replays the card's own files and has no way to send new
+    // ones, so anything accepted here would upload and then strand. The
+    // composer hides its own controls; this catches the canvas drop, which
+    // does not go through them.
+    if (useComposerStore.getState().regenerateNodeId) {
+      toast.error(
+        "Finish or cancel the regeneration before attaching a file.",
+      );
+      return;
+    }
 
     const room = MAX_ATTACHMENTS_PER_TURN - get().drafts.length;
     if (room <= 0) {
@@ -82,15 +98,20 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
         toast.error(classification.message);
         continue;
       }
+      if (named.size === 0) {
+        toast.error(`${named.name} is empty.`);
+        continue;
+      }
+      // The cap is only applied here to files nothing can shrink. A 12MP
+      // camera photo is over the 8MB image cap and lands well under 1MB once
+      // downscaled, so rejecting it before the downscaler has run would be
+      // refusing a file we were about to make acceptable; that check moves
+      // into start(), after the resize.
       const cap = SIZE_CAPS[classification.kind];
-      if (named.size > cap) {
+      if (!isResizable(named) && named.size > cap) {
         toast.error(
           `${named.name} is ${formatBytes(named.size)} — the limit for this kind of file is ${formatBytes(cap)}.`,
         );
-        continue;
-      }
-      if (named.size === 0) {
-        toast.error(`${named.name} is empty.`);
         continue;
       }
 
@@ -110,7 +131,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
         ],
       }));
 
-      void start(id, named, conversationId, set);
+      void start(id, named, cap, conversationId, set);
     }
   },
 
@@ -130,9 +151,14 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
     }
   },
 
-  released() {
-    aborts.clear();
-    set({ drafts: [] });
+  released(sentAttachmentIds) {
+    const sent = new Set(sentAttachmentIds);
+    set((state) => ({
+      drafts: state.drafts.filter(
+        (d) => !(d.attachment && sent.has(d.attachment.id)),
+      ),
+    }));
+    for (const id of sentAttachmentIds) aborts.delete(id);
   },
 
   reset() {
@@ -161,6 +187,7 @@ function patch(
 async function start(
   id: string,
   file: File,
+  cap: number,
   conversationId: string,
   set: Setter,
 ): Promise<void> {
@@ -171,6 +198,16 @@ async function start(
     return;
   }
   patch(set, id, { byteSize: prepared.size });
+
+  // Still too big with the pixels already thrown away — an error on the chip
+  // rather than a toast, because by now the file is on screen.
+  if (prepared.size > cap) {
+    patch(set, id, {
+      status: "error",
+      error: `${formatBytes(prepared.size)} — the limit for this kind of file is ${formatBytes(cap)}.`,
+    });
+    return;
+  }
 
   const upload = uploadAttachment({
     file: prepared,

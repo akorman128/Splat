@@ -153,7 +153,12 @@ viewer holding a share link cannot mint a signed URL.
 
 Since there's no service-role client, `/api/attachments/sweep` runs as the
 signed-in user rather than as a cron job — the conversation view pings it once
-per load and each user reclaims their own abandoned drafts and orphaned objects.
+per load and each user reclaims their own leftovers: drafts abandoned before
+send, and objects with no row. Deleting a card or a conversation removes its
+objects first, but that is the fast path rather than the guarantee; the cascade
+destroys every `storage_path` it touches, so the sweep treats the bucket
+listing as the source of truth and reclaims any conversation folder with no
+surviving rows.
 
 ### Where things live
 

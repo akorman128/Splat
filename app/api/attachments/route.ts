@@ -54,11 +54,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const filename = (file.name.split(/[\\/]/).pop() || "attachment").slice(
-    0,
-    MAX_FILENAME_LENGTH,
-  );
-  const classification = classify(filename, file.type);
+  // Classified before truncation: a name long enough to be cut loses its
+  // extension, and a .ts file with no extension left falls back to the MIME the
+  // browser reported — video/mp2t — and is rejected as video.
+  const untruncated = file.name.split(/[\\/]/).pop() || "attachment";
+  const classification = classify(untruncated, file.type);
+  const filename = untruncated.slice(0, MAX_FILENAME_LENGTH);
   if (!classification.ok) {
     return NextResponse.json(
       { error: classification.message },
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
   }
 
   const id = randomUUID();
-  const path = `${user.id}/${conversationId}/${id}${storageExtension(filename)}`;
+  const path = `${user.id}/${conversationId}/${id}${storageExtension(untruncated)}`;
   const bytes = new Uint8Array(await file.arrayBuffer());
 
   const { error: uploadError } = await supabase.storage
