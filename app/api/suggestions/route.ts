@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { currentUser } from "@/lib/supabase/dal";
 import { decryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
 import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
@@ -9,10 +10,7 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  if (!(await currentUser())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { authClaims } from "@/lib/supabase/claims";
+import { currentUser } from "@/lib/supabase/dal";
 import { modelCatalog } from "@/lib/providers/catalog";
 import {
   PROVIDER_LABELS,
@@ -9,9 +8,7 @@ import {
 } from "@/lib/providers/models";
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { authClaims } from "@/lib/supabase/claims";
+import { currentUser } from "@/lib/supabase/dal";
 import { MAX_SKILL_NAME_LENGTH } from "@/lib/types";
 
 const UNIQUE_VIOLATION = "23505";
@@ -38,8 +38,7 @@ export async function createSkill(input: {
   instructions: string;
 }) {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     redirect("/login");
   }
 
@@ -58,8 +57,7 @@ export async function updateSkill(
   input: { name: string; instructions: string },
 ) {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     redirect("/login");
   }
 
@@ -81,8 +79,7 @@ export async function updateSkill(
 
 export async function deleteSkill(skillId: string) {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     redirect("/login");
   }
 
