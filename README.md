@@ -97,9 +97,10 @@ gets the canvas read-only — and *Stop sharing* nulls the column, after which t
 URL 404s.
 
 Anonymous readers never touch the tables. `shared_conversation(token)` returns
-the conversation, its nodes (minus `user_id`), context edges and suggestions as
-one jsonb payload, so there is no anon-visible policy that could be used to
-enumerate shared rows. The viewer renders the same canvas with `readOnly` set on
+the conversation, its nodes (minus `user_id`), context edges, suggestions and
+attachment metadata (minus `user_id`, `storage_path` and `extracted_text`) as one
+jsonb payload, so there is no anon-visible policy that could be used to enumerate
+shared rows. The viewer renders the same canvas with `readOnly` set on
 the graph store: no composer, no card actions, no geometry writes, and tldraw
 itself in `isReadonly` mode.
 
@@ -119,23 +120,65 @@ the new text; deleting one leaves the cards it made intact. Skills are
 deliberately absent from `shared_conversation()` — a share link hands out the
 canvas, never the instructions behind it.
 
+### Attaching files to a prompt
+
+Drop a file on the canvas, paste a screenshot, or use the paperclip. Images ride
+as native vision blocks; PDFs, `.docx`, `.xlsx` and anything text-shaped are
+extracted to text **once, at upload**, because the context picker has to price a
+file in tokens before the prompt is ever sent, and that number cannot exist
+until the text does. Bytes live in a private Storage bucket keyed by
+`<user>/<conversation>/<attachment>`; the metadata and extracted text live in
+`attachments`.
+
+The hard part isn't the upload — it's that in a DAG, a file attached to card A
+would otherwise be re-sent by *every* follow-up down that branch that includes A.
+So attachments are first-class rows in the context picker, nested under the card
+that owns them with their own estimate, **checked on the turn they're attached
+and unchecked ever after**. That default needs no code: a fresh upload is a draft
+(`node_id is null`), which is a composer chip rather than a picker row, and being
+a chip is being checked.
+
+`attachments.node_id` is the owning card — what displays the file, and what the
+delete cascade follows. `node_attachments` is the per-turn record of what a
+request actually sent, the `context_edges` analogue, and it is what a regenerate
+replays. A file whose owning card is in context goes back onto *that* card's
+message, so the conversation still reads "here is the file, here is my question
+about it"; otherwise it rides on the current prompt.
+
+Two consequences worth knowing. A sent attachment is **immutable** — removable
+while it's a draft, never afterwards — because `node_attachments` snapshots only
+the display metadata, not the payload. And attachments on a shared canvas are
+name-only pills: the storage policies are `to authenticated`, so an anonymous
+viewer holding a share link cannot mint a signed URL.
+
+Since there's no service-role client, `/api/attachments/sweep` runs as the
+signed-in user rather than as a cron job — the conversation view pings it once
+per load and each user reclaims their own leftovers: drafts abandoned before
+send, and objects with no row. Deleting a card or a conversation removes its
+objects first, but that is the fast path rather than the guarantee; the cascade
+destroys every `storage_path` it touches, so the sweep treats the bucket
+listing as the source of truth and reclaims any conversation folder with no
+surviving rows.
+
 ### Where things live
 
 | Path | What's in it |
 | --- | --- |
 | `app/api/chat/` | The main event: validates the model, builds the message list, streams |
+| `app/api/attachments/` | Upload + extraction, signed URLs, the sweep |
 | `app/api/{credentials,models,suggestions,geometry}/` | Key management, OpenRouter catalogue, titles + chips, position writes |
 | `app/(app)/skills/` | The server actions behind creating, editing, and deleting a skill |
 | `lib/providers/` | One adapter per provider behind a 3-method interface |
+| `lib/attachments/` | Classification, extraction, and how a file becomes message content |
 | `lib/graph/` | Pure functions: ancestors, descendants, topological order, cycle check |
 | `lib/skills/` | Resolving a prompt's skills and folding them into a system prompt |
-| `lib/store/` | zustand: composer state, graph cache, in-flight stream text |
+| `lib/store/` | zustand: composer state, graph cache, in-flight stream text, upload drafts |
 | `components/canvas/` | tldraw shape util, card rendering, overlay, keyboard nav |
-| `components/composer/` | Prompt box, provider/model picker, context checkboxes, skill picker |
+| `components/composer/` | Prompt box, provider/model picker, context checkboxes, skill picker, attachment chips |
 | `supabase/migrations/` | Schema, RLS policies, triggers |
 
 Tables: `profiles`, `provider_creds`, `conversations`, `nodes`, `context_edges`,
-`suggestions`, `skills`, `node_skills`.
+`suggestions`, `skills`, `node_skills`, `attachments`, `node_attachments`.
 
 ## Good first contributions
 
@@ -244,6 +287,16 @@ against them.
 - **Suggestions are generated once, eagerly.** If that utility call fails, the
   card just has no chips — there's no retry-on-reload sweep. (Fixing this is a
   fine first contribution.)
+- **A `.ts` file reports as `video/mp2t`.** The MIME database says TypeScript
+  source is video, and `.md` and `.csv` routinely arrive as
+  `application/octet-stream`. Attachments are therefore classified by
+  **extension first** against a text allowlist and normalised to `text/plain`;
+  only what's left over meets the "no video" rule. Reverse that order and source
+  code stops being attachable, in an app people will attach source code to.
+- **File uploads use `XMLHttpRequest`, not `fetch`.** A `fetch` body can only
+  report upload progress via `duplex: "half"` streaming, which is Chromium over
+  HTTP/2 only. `lib/attachments-client.ts` is the one place in the app that
+  talks to the network without `postJson`.
 
 ## Sending a pull request
 

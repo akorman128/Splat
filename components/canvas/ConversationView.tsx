@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { ChevronUp } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import { useAttachmentStore } from "@/lib/store/attachment-store";
+import { sweepAttachments } from "@/lib/attachments-client";
 import { Composer } from "@/components/composer/Composer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,7 @@ import { DeleteNodeDialog } from "./DeleteNodeDialog";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import type {
+  CardAttachment,
   ContextEdgeRow,
   CredentialSummary,
   NodeRow,
@@ -28,6 +31,7 @@ export function ConversationView({
   nodes,
   edges,
   suggestions,
+  attachments,
   credentials,
   skills,
 }: {
@@ -35,6 +39,7 @@ export function ConversationView({
   nodes: NodeRow[];
   edges: ContextEdgeRow[];
   suggestions: SuggestionRow[];
+  attachments: CardAttachment[];
   credentials: CredentialSummary[];
   skills: SkillSummary[];
 }) {
@@ -60,11 +65,22 @@ export function ConversationView({
     if (regenerateNodeId) setComposerHidden(false);
   }
 
+  // A file dropped on the canvas lands in a composer that may be hidden, and a
+  // chip nobody can see reads as a drop that did nothing.
+  const draftCount = useAttachmentStore((s) => s.drafts.length);
+  const [lastDraftCount, setLastDraftCount] = useState(0);
+  if (draftCount !== lastDraftCount) {
+    setLastDraftCount(draftCount);
+    if (draftCount > lastDraftCount) setComposerHidden(false);
+  }
+
   useEffect(() => {
     useGraphStore
       .getState()
-      .init({ conversationId, nodes, edges, suggestions });
+      .init({ conversationId, nodes, edges, suggestions, attachments });
     useComposerStore.getState().setRegenerateNode(null);
+    useAttachmentStore.getState().reset();
+    sweepAttachments(conversationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 

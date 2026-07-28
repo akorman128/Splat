@@ -12,7 +12,7 @@ import type { SharedConversation } from "@/lib/types";
 const Canvas = dynamic(() => import("./Canvas"), { ssr: false });
 
 export function SharedConversationView({ shared }: { shared: SharedConversation }) {
-  const { conversation, nodes, edges, suggestions } = shared;
+  const { conversation, nodes, edges, suggestions, attachments } = shared;
   const initialized = useGraphStore(
     (s) => s.conversationId === conversation.id && s.readOnly,
   );
@@ -23,6 +23,9 @@ export function SharedConversationView({ shared }: { shared: SharedConversation 
       nodes,
       edges,
       suggestions,
+      // Name-only: the storage policies are `to authenticated`, so a viewer
+      // holding this link cannot open the bytes behind a pill.
+      attachments: attachments ?? [],
       readOnly: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

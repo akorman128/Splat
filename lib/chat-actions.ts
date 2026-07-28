@@ -65,6 +65,11 @@ export function useSubmitSuggestion() {
           parentId: parent.id,
           contextNodeIds,
           skillIds,
+          // A suggestion is a one-click follow-up with no composer in front of
+          // it. Skills carry down the branch because they shape how the model
+          // answers; files do not, because re-sending them is the cost this
+          // feature exists to avoid.
+          attachmentIds: [],
           prompt: suggestion.text,
           provider,
           model: model ?? defaultModel(provider),

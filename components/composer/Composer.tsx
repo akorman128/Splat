@@ -8,6 +8,7 @@ import {
   ArrowUp,
   ChevronDown,
   GitBranch,
+  Paperclip,
   RefreshCw,
   Sparkles,
   X,
@@ -26,8 +27,13 @@ import { createClient } from "@/lib/supabase/client";
 import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
 import { SkillMenu, matchSkills, skillTriggerAt, type SkillTrigger } from "./SkillMenu";
+import { AttachmentChips } from "./AttachmentChips";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import {
+  readyAttachmentIds,
+  useAttachmentStore,
+} from "@/lib/store/attachment-store";
 import { useChatStream } from "@/lib/chat-client";
 import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition, rootPosition } from "@/lib/layout";
@@ -67,7 +73,18 @@ export function Composer({
   const [attached, setAttached] = useState<SkillSummary[]>([]);
   const [trigger, setTrigger] = useState<SkillTrigger | null>(null);
   const [highlight, setHighlight] = useState(0);
+  // Attachments owned by cards in context, re-checked for this turn. Empty is
+  // the answer that matters: a file rides along on the turn it was attached and
+  // never again unless someone asks for it back.
+  const [checkedAttachments, setCheckedAttachments] = useState<
+    Record<string, boolean>
+  >({});
+  const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const drafts = useAttachmentStore((s) => s.drafts);
+  const uploading = drafts.some((d) => d.status === "uploading");
 
   const matches = useMemo(
     () =>
@@ -126,6 +143,7 @@ export function Composer({
   const [lastParentId, setLastParentId] = useState<string | null>(null);
   if ((parent?.id ?? null) !== lastParentId) {
     setLastParentId(parent?.id ?? null);
+    setCheckedAttachments({});
     if (!parent) {
       setChecked({});
     } else {
@@ -268,6 +286,15 @@ export function Composer({
     const text = prompt.trim();
     if (!text || !provider) return;
 
+    // Enter reaches submit() without passing the Send button, so the guard has
+    // to live here too: sending mid-upload would quietly leave the file out of
+    // the very prompt it was attached to, and the model would answer about a
+    // document it never received.
+    if (useAttachmentStore.getState().drafts.some((d) => d.status === "uploading")) {
+      toast.error("Still uploading — one moment.");
+      return;
+    }
+
     const graph = useGraphStore.getState();
     if (!graph.conversationId) return;
     const allNodes = Object.values(graph.nodes);
@@ -280,6 +307,25 @@ export function Composer({
           .filter(([id, v]) => v && graph.nodes[id])
           .map(([id]) => id)
       : [];
+    // Drafts are what this card is about to own; the checked ones are older
+    // files being replayed. The route tells them apart by node_id, so they can
+    // travel as one list.
+    //
+    // The checked set is filtered against what still exists for the same reason
+    // contextNodeIds is: deleting the card that owned a ticked file leaves its
+    // id checked with no row and no checkbox to untick, and the route answers
+    // every subsequent send with a 400.
+    const liveAttachmentIds = new Set(
+      Object.values(graph.attachments).flatMap((list) =>
+        list.map((a) => a.id),
+      ),
+    );
+    const attachmentIds = [
+      ...readyAttachmentIds(useAttachmentStore.getState().drafts),
+      ...Object.entries(checkedAttachments)
+        .filter(([id, value]) => value && liveAttachmentIds.has(id))
+        .map(([id]) => id),
+    ];
     const position = parentNode
       ? childPosition(parentNode, allNodes)
       : rootPosition(allNodes);
@@ -294,13 +340,22 @@ export function Composer({
           parentId: parentNode?.id ?? null,
           contextNodeIds,
           skillIds: attached.map((s) => s.id),
+          attachmentIds,
           prompt: text,
           provider,
           model: model ?? defaultModel(provider),
           canvasX: position.x,
           canvasY: position.y,
         },
-        onNode: () => setSending(false),
+        onNode: () => {
+          setSending(false);
+          // The card owns them now — the composer lets go rather than deleting,
+          // which would take the card's own files with it. Only the ones that
+          // actually went: a file dropped while this card was streaming is not
+          // part of it and keeps its chip.
+          useAttachmentStore.getState().released(attachmentIds);
+          setCheckedAttachments({});
+        },
         onTitled: (_nodeId, isRoot) => {
           if (isRoot) router.refresh();
         },
@@ -331,8 +386,39 @@ export function Composer({
     );
   }
 
+  // A regeneration replays the card's own files; there is nothing to attach to
+  // an answer being rewritten in place.
+  const attachable = !regenerateNodeId;
+
+  function pick(files: File[], synthesiseNames = false) {
+    if (!attachable || files.length === 0) return;
+    useAttachmentStore.getState().enqueue(files, { synthesiseNames });
+  }
+
   return (
-    <div className="relative space-y-2 rounded-xl border bg-card p-3 shadow-lg">
+    <div
+      className={cn(
+        "relative space-y-2 rounded-xl border bg-card p-3 shadow-lg",
+        dragging && "ring-2 ring-primary",
+      )}
+      onDragOver={(event) => {
+        if (!attachable || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+        setDragging(false);
+      }}
+      onDrop={(event) => {
+        if (!attachable || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragging(false);
+        pick(Array.from(event.dataTransfer.files));
+      }}
+    >
       {onHide && (
         <Button
           variant="ghost"
@@ -412,6 +498,10 @@ export function Composer({
             onToggle={(id, value) =>
               setChecked((prev) => ({ ...prev, [id]: value }))
             }
+            checkedAttachments={checkedAttachments}
+            onToggleAttachment={(id, value) =>
+              setCheckedAttachments((prev) => ({ ...prev, [id]: value }))
+            }
           />
         </>
       ) : (
@@ -427,6 +517,8 @@ export function Composer({
           </p>
         )
       )}
+
+      <AttachmentChips />
 
       <div className="relative">
         {menuOpen && (
@@ -451,6 +543,18 @@ export function Composer({
             setHighlight(0);
           }}
           onBlur={() => setTrigger(null)}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files);
+            if (files.length === 0) return;
+            e.preventDefault();
+            // A screenshot arrives as "image.png" every single time, so three
+            // pastes would give three identical chips. Real files keep their
+            // names.
+            const anonymous = files.every(
+              (file) => !file.name || /^image\.\w+$/i.test(file.name),
+            );
+            pick(files, anonymous);
+          }}
           onKeyDown={(e) => {
             if (menuOpen) {
               if (e.key === "ArrowDown") {
@@ -492,6 +596,29 @@ export function Composer({
       </div>
 
       <div className="flex items-center gap-2">
+        {attachable && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                pick(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="Attach a file (or drop one anywhere on the canvas)"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip />
+              <span className="sr-only">Attach a file</span>
+            </Button>
+          </>
+        )}
         <Select
           value={provider}
           onValueChange={(value) => {
@@ -521,8 +648,9 @@ export function Composer({
         <Button
           size="sm"
           className="ml-auto"
+          title={uploading ? "Waiting for the upload to finish" : undefined}
           onClick={submit}
-          disabled={!prompt.trim() || sending}
+          disabled={!prompt.trim() || sending || uploading}
         >
           {regenerateNodeId ? (
             <>

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useStreamStore } from "@/lib/store/stream-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import { purgeAttachmentObjects } from "@/lib/attachments-client";
 import { withDescendants } from "@/lib/graph/descendants";
 
 export function DeleteNodeDialog() {
@@ -22,6 +23,9 @@ export function DeleteNodeDialog() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (ids: string[]) => {
+      // Before the rows go: attachments cascade off nodes, and once the row is
+      // gone so is the only copy of its storage path.
+      await purgeAttachmentObjects({ nodeIds: ids });
       const { error } = await createClient().from("nodes").delete().in("id", ids);
       if (error) throw new Error(error.message);
       return ids;
