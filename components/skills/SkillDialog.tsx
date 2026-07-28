@@ -30,8 +30,6 @@ export type SkillTarget = { kind: "new" } | { kind: "edit"; skillId: string };
 
 type Draft = { name: string; instructions: string };
 
-const BLANK: Draft = { name: "", instructions: "" };
-
 export function SkillDialog({
   target,
   onOpenChange,
@@ -49,18 +47,14 @@ export function SkillDialog({
   const [deleting, setDeleting] = useState(false);
 
   // The dialog stays mounted between skills, so each one is reset as it opens.
-  // A new skill starts blank and only reaches the database on save; an existing
-  // one is read here because instructions are deliberately kept off the
-  // sidebar's payload.
+  // A new skill is ready blank; an existing one waits on the read below.
   const [shown, setShown] = useState<SkillTarget | null>(null);
   if (target !== shown) {
     setShown(target);
     setMissing(false);
-    setSaved(target?.kind === "new" ? BLANK : null);
-    if (target?.kind === "new") {
-      setName(BLANK.name);
-      setInstructions(BLANK.instructions);
-    }
+    setSaved(target?.kind === "new" ? { name: "", instructions: "" } : null);
+    setName("");
+    setInstructions("");
   }
 
   useEffect(() => {
@@ -102,9 +96,9 @@ export function SkillDialog({
       onOpenChange(false);
       router.refresh();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not save the skill",
-      );
+      toast.error("Could not save the skill", {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setSaving(false);
     }
@@ -119,9 +113,9 @@ export function SkillDialog({
       onOpenChange(false);
       router.refresh();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not delete the skill",
-      );
+      toast.error("Could not delete the skill", {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setDeleting(false);
     }
@@ -207,10 +201,7 @@ export function SkillDialog({
                     Delete
                   </Button>
                 )}
-                <DialogClose
-                  render={<Button type="button" variant="outline" />}
-                  className={creating ? "sm:ml-auto" : undefined}
-                >
+                <DialogClose render={<Button type="button" variant="outline" />}>
                   Cancel
                 </DialogClose>
                 <Button

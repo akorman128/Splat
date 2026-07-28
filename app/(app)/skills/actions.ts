@@ -8,6 +8,18 @@ import { MAX_SKILL_NAME_LENGTH } from "@/lib/types";
 
 const UNIQUE_VIOLATION = "23505";
 
+// Names are unique per owner, so that collision is the one worth wording.
+function writeFailed(
+  error: { code: string; message: string },
+  verb: string,
+): Error {
+  return new Error(
+    error.code === UNIQUE_VIOLATION
+      ? "You already have a skill with that name."
+      : `Could not ${verb} the skill: ${error.message}`,
+  );
+}
+
 function cleanName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -35,11 +47,7 @@ export async function createSkill(input: {
     .from("skills")
     .insert({ name: cleanName(input.name), instructions: input.instructions });
   if (error) {
-    throw new Error(
-      error.code === UNIQUE_VIOLATION
-        ? "You already have a skill with that name."
-        : `Could not create the skill: ${error.message}`,
-    );
+    throw writeFailed(error, "create");
   }
 
   revalidatePath("/", "layout");
@@ -62,11 +70,7 @@ export async function updateSkill(
     .select("id")
     .maybeSingle();
   if (error) {
-    throw new Error(
-      error.code === UNIQUE_VIOLATION
-        ? "You already have a skill with that name."
-        : `Could not save the skill: ${error.message}`,
-    );
+    throw writeFailed(error, "save");
   }
   if (!data) {
     throw new Error("Skill not found");

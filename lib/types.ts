@@ -14,7 +14,7 @@ export type NodeSkillRow = Database["public"]["Tables"]["node_skills"]["Row"];
 // titled — by the user or by the root card's auto-title.
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
 
-// Same idea for a freshly created skill, which is named before it is written.
+// Matches the column's check constraint.
 export const MAX_SKILL_NAME_LENGTH = 60;
 
 // What a card needs to render. The public share view is served a node without
@@ -36,8 +36,9 @@ export type SharedConversation = {
 };
 
 // What the composer needs to offer a skill in its "/" menu and show it as an
-// attached chip. The instructions themselves never reach the client — they are
-// read server-side when the prompt is assembled.
+// attached chip. Instructions are left out so they don't ride along with every
+// page load; the editor reads the one skill it opens, and the prompt is
+// assembled from them server-side.
 export type SkillSummary = {
   id: string;
   name: string;
