@@ -3,10 +3,31 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import type { ProviderAdapter, StreamEvent } from "./types";
+import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 function client(apiKey: string): Anthropic {
   return new Anthropic({ apiKey });
+}
+
+function toAnthropic(messages: ChatMessage[]): Anthropic.MessageParam[] {
+  return messages.map((message) => ({
+    role: message.role,
+    content:
+      typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) =>
+            part.type === "text"
+              ? { type: "text" as const, text: part.text }
+              : {
+                  type: "image" as const,
+                  source: {
+                    type: "base64" as const,
+                    media_type: part.mediaType,
+                    data: part.data,
+                  },
+                },
+          ),
+  }));
 }
 
 export const anthropicAdapter: ProviderAdapter = {
@@ -34,7 +55,7 @@ export const anthropicAdapter: ProviderAdapter = {
     const stream = client(apiKey).messages.stream({
       model,
       max_tokens: MAX_OUTPUT_TOKENS,
-      messages,
+      messages: toAnthropic(messages),
       ...(system ? { system } : {}),
     });
 

@@ -10,7 +10,10 @@ type RawModel = {
   name?: unknown;
   context_length?: unknown;
   pricing?: { prompt?: unknown; completion?: unknown } | null;
-  architecture?: { output_modalities?: unknown } | null;
+  architecture?: {
+    output_modalities?: unknown;
+    input_modalities?: unknown;
+  } | null;
   top_provider?: { max_completion_tokens?: unknown } | null;
 };
 
@@ -32,6 +35,8 @@ function normalise(raw: RawModel): CatalogModel | null {
     return null;
   }
 
+  const inputs = raw.architecture?.input_modalities;
+
   return {
     id: raw.id,
     name: typeof raw.name === "string" && raw.name ? raw.name : raw.id,
@@ -39,6 +44,10 @@ function normalise(raw: RawModel): CatalogModel | null {
     maxOutputTokens: toNumber(raw.top_provider?.max_completion_tokens),
     promptPrice: toNumber(raw.pricing?.prompt),
     completionPrice: toNumber(raw.pricing?.completion),
+    // A model that declares nothing is assumed to take images: the catalogue is
+    // third-party data, and refusing a send on a missing field would be our bug
+    // showing up as the user's.
+    supportsImages: Array.isArray(inputs) ? inputs.includes("image") : true,
   };
 }
 

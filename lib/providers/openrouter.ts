@@ -4,6 +4,8 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { messageText } from "./types";
+import { IMAGE_TOKEN_ESTIMATE } from "@/lib/tokens";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
@@ -29,14 +31,74 @@ const OUTPUT_RESERVE_TOKENS = 512;
 const MIN_OUTPUT_TOKENS = 256;
 const FOLLOWUPS_MAX_TOKENS = 2000;
 
-function estimatePromptTokens(messages: { content: string }[]): number {
-  const chars = messages.reduce((n, m) => n + m.content.length, 0);
-  return Math.ceil(chars / 4) + messages.length * 8;
+// This one used to be `m.content.length` summed over the messages, which kept
+// compiling once content became a union — `.length` exists on an array too —
+// while quietly counting a 60k-character PDF as 1. outputBudget() would then
+// hand the model a max_tokens it could not honour alongside the real prompt.
+// Parts are summed individually, and images are added after the /4 because
+// their cost has nothing to do with how long the base64 is.
+function estimatePromptTokens(
+  messages: ChatMessage[],
+  system?: string,
+): number {
+  let chars = system?.length ?? 0;
+  let images = 0;
+  for (const message of messages) {
+    if (typeof message.content === "string") {
+      chars += message.content.length;
+      continue;
+    }
+    for (const part of message.content) {
+      if (part.type === "text") chars += part.text.length;
+      else images += 1;
+    }
+  }
+  const count = messages.length + (system ? 1 : 0);
+  return Math.ceil(chars / 4) + images * IMAGE_TOKEN_ESTIMATE + count * 8;
+}
+
+// OpenRouter used to be handed `messages` raw — it only ever compiled because
+// `{ role, content: string }` is structurally a ChatCompletionMessageParam. It
+// stops being one the moment content can be an array, so the mapping is now
+// explicit. The skill system prompt is prepended here rather than by the
+// caller, so the budget above and the request below cannot disagree about what
+// is being sent.
+function toChatCompletions(
+  messages: ChatMessage[],
+  system?: string,
+): OpenAI.ChatCompletionMessageParam[] {
+  const mapped = messages.map(
+    (message): OpenAI.ChatCompletionMessageParam => {
+      if (message.role === "assistant") {
+        return { role: "assistant", content: messageText(message.content) };
+      }
+      if (typeof message.content === "string") {
+        return { role: "user", content: message.content };
+      }
+      return {
+        role: "user",
+        content: message.content.map((part) =>
+          part.type === "text"
+            ? { type: "text" as const, text: part.text }
+            : {
+                type: "image_url" as const,
+                image_url: {
+                  url: `data:${part.mediaType};base64,${part.data}`,
+                },
+              },
+        ),
+      };
+    },
+  );
+  return system
+    ? [{ role: "system", content: system }, ...mapped]
+    : mapped;
 }
 
 async function outputBudget(
   model: string,
-  messages: { content: string }[],
+  messages: ChatMessage[],
+  system?: string,
 ): Promise<number | undefined> {
   const entry = await catalogEntry("openrouter", model);
   if (!entry) return undefined;
@@ -48,7 +110,7 @@ async function outputBudget(
   if (entry.contextLength) {
     const room =
       entry.contextLength -
-      estimatePromptTokens(messages) -
+      estimatePromptTokens(messages, system) -
       OUTPUT_RESERVE_TOKENS;
     budget = Math.min(budget, room);
   }
@@ -146,15 +208,12 @@ export const openrouterAdapter: ProviderAdapter = {
     messages,
     system,
   }): AsyncGenerator<StreamEvent> {
-    const sent = system
-      ? [{ role: "system" as const, content: system }, ...messages]
-      : messages;
     const stream = await client(apiKey).chat.completions.create({
       model,
-      messages: sent,
+      messages: toChatCompletions(messages, system),
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: await outputBudget(model, sent),
+      max_tokens: await outputBudget(model, messages, system),
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {
@@ -195,7 +254,7 @@ export const openrouterAdapter: ProviderAdapter = {
       const budget = await outputBudget(target, messages);
       const res = await client(apiKey).chat.completions.parse({
         model: target,
-        messages,
+        messages: toChatCompletions(messages),
         response_format: zodResponseFormat(FollowupsSchema, "followups"),
         max_tokens: Math.min(
           FOLLOWUPS_MAX_TOKENS,
