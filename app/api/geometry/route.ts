@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { authClaims } from "@/lib/supabase/claims";
+import { currentUser } from "@/lib/supabase/dal";
 
 type GeometryUpdate = { id: string; x: number; y: number; w: number; h: number };
 
@@ -20,8 +20,7 @@ function isGeometryUpdate(value: unknown): value is GeometryUpdate {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 

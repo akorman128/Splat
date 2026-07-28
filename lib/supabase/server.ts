@@ -1,8 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import type { Database } from "./types";
 
-export async function createClient() {
+// Memoized per request: refresh tokens are single-use, so two clients racing to
+// refresh the same expired session leaves the loser with no session at all.
+export const createClient = cache(async () => {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(
@@ -24,4 +27,4 @@ export async function createClient() {
       },
     },
   );
-}
+});

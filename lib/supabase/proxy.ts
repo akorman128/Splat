@@ -1,12 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { signingKeys } from "./jwks";
 
-const PROTECTED_PREFIXES = ["/c", "/settings", "/onboarding"];
+const PROTECTED_PREFIXES = ["/c", "/settings", "/onboarding", "/skills"];
 
 export async function updateSession(request: NextRequest) {
-  const jwks = await signingKeys();
-
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -30,7 +27,7 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const { data } = await supabase.auth.getClaims(undefined, { jwks });
+  const { data } = await supabase.auth.getClaims();
   const claims = data?.claims ?? null;
 
   const path = request.nextUrl.pathname;

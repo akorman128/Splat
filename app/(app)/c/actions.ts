@@ -4,13 +4,12 @@ import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { authClaims } from "@/lib/supabase/claims";
+import { currentUser } from "@/lib/supabase/dal";
 import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 
 export async function createFirstConversation() {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     redirect("/login");
   }
 
@@ -44,8 +43,7 @@ export async function shareConversation(
   conversationId: string,
 ): Promise<string> {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     redirect("/login");
   }
 
@@ -81,8 +79,7 @@ export async function shareConversation(
 
 export async function unshareConversation(conversationId: string) {
   const supabase = await createClient();
-  const claims = await authClaims(supabase);
-  if (!claims) {
+  if (!(await currentUser())) {
     redirect("/login");
   }
 
