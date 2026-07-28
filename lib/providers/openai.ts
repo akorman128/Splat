@@ -3,10 +3,32 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import type { ProviderAdapter, StreamEvent } from "./types";
+import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 function client(apiKey: string): OpenAI {
   return new OpenAI({ apiKey });
+}
+
+// `detail` is required on an input_image, not optional — the shape everyone
+// half-remembers, `{ type: "input_image", image_url }`, does not typecheck.
+function toResponsesInput(
+  messages: ChatMessage[],
+): OpenAI.Responses.ResponseInput {
+  return messages.map((message) => ({
+    role: message.role,
+    content:
+      typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) =>
+            part.type === "text"
+              ? { type: "input_text" as const, text: part.text }
+              : {
+                  type: "input_image" as const,
+                  image_url: `data:${part.mediaType};base64,${part.data}`,
+                  detail: "auto" as const,
+                },
+          ),
+  }));
 }
 
 export const openaiAdapter: ProviderAdapter = {
@@ -33,7 +55,7 @@ export const openaiAdapter: ProviderAdapter = {
   }): AsyncGenerator<StreamEvent> {
     const stream = await client(apiKey).responses.create({
       model,
-      input: messages.map((m) => ({ role: m.role, content: m.content })),
+      input: toResponsesInput(messages),
       stream: true,
       max_output_tokens: MAX_OUTPUT_TOKENS,
       ...(system ? { instructions: system } : {}),

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { startTransition, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { purgeAttachmentObjects } from "@/lib/attachments-client";
 import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 import {
   Sidebar,
@@ -107,6 +108,9 @@ export function AppSidebar({
     if (!pendingDelete) return;
     setDeleting(true);
     const supabase = createClient();
+    // Objects first — the cascade takes every attachment row with the
+    // conversation, and with them the only record of what to delete.
+    await purgeAttachmentObjects({ conversationId: pendingDelete.id });
     const { error } = await supabase
       .from("conversations")
       .delete()

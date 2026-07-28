@@ -14,6 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      attachments: {
+        Row: {
+          byte_size: number
+          conversation_id: string
+          created_at: string
+          est_tokens: number
+          extract_error: string | null
+          extract_status: string
+          extracted_text: string | null
+          filename: string
+          id: string
+          image_height: number | null
+          image_width: number | null
+          kind: string
+          mime_type: string
+          node_id: string | null
+          storage_path: string
+          truncated: boolean
+          user_id: string
+        }
+        Insert: {
+          byte_size: number
+          conversation_id: string
+          created_at?: string
+          est_tokens?: number
+          extract_error?: string | null
+          extract_status?: string
+          extracted_text?: string | null
+          filename: string
+          id?: string
+          image_height?: number | null
+          image_width?: number | null
+          kind: string
+          mime_type: string
+          node_id?: string | null
+          storage_path: string
+          truncated?: boolean
+          user_id?: string
+        }
+        Update: {
+          byte_size?: number
+          conversation_id?: string
+          created_at?: string
+          est_tokens?: number
+          extract_error?: string | null
+          extract_status?: string
+          extracted_text?: string | null
+          filename?: string
+          id?: string
+          image_height?: number | null
+          image_width?: number | null
+          kind?: string
+          mime_type?: string
+          node_id?: string | null
+          storage_path?: string
+          truncated?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attachments_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attachments_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       context_edges: {
         Row: {
           id: string
@@ -79,6 +154,51 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      node_attachments: {
+        Row: {
+          attachment_id: string
+          filename: string
+          id: string
+          kind: string
+          mime_type: string
+          node_id: string
+          position: number
+        }
+        Insert: {
+          attachment_id: string
+          filename: string
+          id?: string
+          kind: string
+          mime_type: string
+          node_id: string
+          position: number
+        }
+        Update: {
+          attachment_id?: string
+          filename?: string
+          id?: string
+          kind?: string
+          mime_type?: string
+          node_id?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_attachments_attachment_id_fkey"
+            columns: ["attachment_id"]
+            isOneToOne: false
+            referencedRelation: "attachments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_attachments_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       nodes: {
         Row: {

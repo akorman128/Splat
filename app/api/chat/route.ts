@@ -8,8 +8,9 @@ import {
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
-import { isKnownCatalogModel } from "@/lib/providers/catalog";
+import { catalogEntry, isKnownCatalogModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
+import { validateAttachmentSelection } from "@/lib/graph/attachment-selection";
 import { topoOrder } from "@/lib/graph/topo-order";
 import {
   nodeSkills,
@@ -17,8 +18,24 @@ import {
   resolveSkillIds,
   skillSystemPrompt,
 } from "@/lib/skills/attachments";
-import type { ChatMessage } from "@/lib/providers/types";
-import type { AttachedSkill, ContextEdgeRow, NodeRow } from "@/lib/types";
+import {
+  TURN_ATTACHMENT_COLUMNS,
+  assembleMessages,
+  loadImageParts,
+  type TurnAttachment,
+} from "@/lib/attachments/content";
+import {
+  ATTACHMENTS_BUCKET,
+  CARD_ATTACHMENT_COLUMNS,
+  MAX_ATTACHMENTS_PER_TURN,
+} from "@/lib/attachments/types";
+import type { ContentPart } from "@/lib/providers/types";
+import type {
+  AttachedSkill,
+  CardAttachment,
+  ContextEdgeRow,
+  NodeRow,
+} from "@/lib/types";
 
 export const maxDuration = 300;
 
@@ -27,6 +44,7 @@ type NewChatBody = {
   parentId: string | null;
   contextNodeIds: string[];
   skillIds?: string[];
+  attachmentIds?: string[];
   prompt: string;
   provider: string;
   model: string;
@@ -79,6 +97,19 @@ async function resolveApiKey(
   }
 }
 
+// Handing an image to a text-only model is a 400 from the provider with a
+// message nobody can act on. openrouter/auto reports the union of everything it
+// might route to, so this is advisory there — and a catalogue we could not
+// reach is not grounds for refusing a send.
+async function imagesAllowed(
+  provider: Provider,
+  model: string,
+): Promise<boolean> {
+  if (!hasModelCatalog(provider)) return true;
+  const entry = await catalogEntry(provider, model);
+  return entry?.supportsImages ?? true;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -102,6 +133,15 @@ export async function POST(request: Request) {
   let conversationNodes: NodeRow[];
   let conversationEdges: ContextEdgeRow[];
   let apiKey: string;
+  // The files this turn sends, in order, and their inlined image bytes. Both
+  // are resolved before anything is written: a storage failure has to be a
+  // clean JSON error, not a card left mid-stream or a rollback that cascades
+  // through claimed attachments.
+  let turnAttachments: TurnAttachment[] = [];
+  let images: Map<string, ContentPart> = new Map();
+  // Only a new card claims drafts; the client needs them back to draw chips
+  // without refetching.
+  let claimedAttachments: CardAttachment[] = [];
 
   const rerunNodeId = body.retryNodeId ?? body.regenerateNodeId;
 
@@ -162,7 +202,7 @@ export async function POST(request: Request) {
       };
     }
 
-    const [nodesRes, edgesRes, ownEdgesRes] = await Promise.all([
+    const [nodesRes, edgesRes, ownEdgesRes, attachmentsRes] = await Promise.all([
       supabase
         .from("nodes")
         .select("*")
@@ -176,16 +216,29 @@ export async function POST(request: Request) {
         .select("*")
         .eq("node_id", existing.id)
         .order("position"),
+      // A rerun replays exactly what the card sent: node_attachments is that
+      // record, and the selection is frozen — there is no picker in front of a
+      // regeneration to change it with.
+      supabase
+        .from("node_attachments")
+        .select(`position, attachments!inner(${TURN_ATTACHMENT_COLUMNS})`)
+        .eq("node_id", existing.id)
+        .order("position"),
     ]);
     conversationNodes = nodesRes.data ?? [];
     conversationEdges = (edgesRes.data ?? []) as unknown as ContextEdgeRow[];
     nodeEdges = ownEdgesRes.data ?? [];
     contextIds = nodeEdges.map((e) => e.source_node_id);
+    turnAttachments = (
+      (attachmentsRes.data ?? []) as unknown as {
+        attachments: TurnAttachment;
+      }[]
+    ).map((row) => row.attachments);
 
-    const rerunKey = await resolveApiKey(
-      supabase,
-      (rerunFields.provider ?? existing.provider) as Provider,
-    );
+    const rerunProvider = (rerunFields.provider ??
+      existing.provider) as Provider;
+    const rerunModel = rerunFields.model ?? existing.model;
+    const rerunKey = await resolveApiKey(supabase, rerunProvider);
     if (!rerunKey.ok) {
       return NextResponse.json(
         { error: rerunKey.error },
@@ -195,7 +248,9 @@ export async function POST(request: Request) {
     apiKey = rerunKey.apiKey;
 
     // Omitting skillIds on a regenerate keeps whatever the card already
-    // carries; sending them (even empty) replaces the set.
+    // carries; sending them (even empty) replaces the set. Attachments have no
+    // equivalent: a regenerate replays exactly the files the card sent, because
+    // there is no picker in front of it to choose differently with.
     const rerunSkillIds =
       regenerating && Array.isArray(body.skillIds)
         ? [...new Set(body.skillIds)]
@@ -209,6 +264,26 @@ export async function POST(request: Request) {
     } else {
       attachedSkills = await nodeSkills(supabase, existing.id);
     }
+
+    if (
+      turnAttachments.some((a) => a.kind === "image") &&
+      !(await imagesAllowed(rerunProvider, rerunModel))
+    ) {
+      return NextResponse.json(
+        {
+          error: `${rerunModel} cannot read images, and this card sent one. Pick a model that can.`,
+        },
+        { status: 422 },
+      );
+    }
+    const rerunImages = await loadImageParts(supabase, turnAttachments);
+    if (!rerunImages.ok) {
+      return NextResponse.json(
+        { error: rerunImages.error },
+        { status: rerunImages.status },
+      );
+    }
+    images = rerunImages.images;
 
     const { data: reset, error: resetError } = await supabase
       .from("nodes")
@@ -342,6 +417,75 @@ export async function POST(request: Request) {
     }
     apiKey = newKey.apiKey;
 
+    const attachmentIds = [
+      ...new Set(
+        (Array.isArray(body.attachmentIds) ? body.attachmentIds : []).filter(
+          (id): id is string => typeof id === "string",
+        ),
+      ),
+    ];
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_TURN) {
+      return NextResponse.json(
+        {
+          error: `A single prompt can carry at most ${MAX_ATTACHMENTS_PER_TURN} files.`,
+        },
+        { status: 400 },
+      );
+    }
+    if (attachmentIds.length > 0) {
+      const { data: rows } = await supabase
+        .from("attachments")
+        .select(TURN_ATTACHMENT_COLUMNS)
+        .in("id", attachmentIds);
+      const byId = new Map(
+        ((rows ?? []) as unknown as TurnAttachment[]).map((row) => [
+          row.id,
+          row,
+        ]),
+      );
+      if (byId.size !== attachmentIds.length) {
+        return NextResponse.json(
+          { error: "One of those files no longer exists" },
+          { status: 400 },
+        );
+      }
+      turnAttachments = attachmentIds.map((id) => byId.get(id)!);
+
+      const attachmentProblem = validateAttachmentSelection({
+        conversationId,
+        parentId: parentId ?? null,
+        attachments: turnAttachments,
+        nodes: conversationNodes,
+        edges: conversationEdges,
+      });
+      if (attachmentProblem) {
+        return NextResponse.json({ error: attachmentProblem }, { status: 400 });
+      }
+
+      if (
+        turnAttachments.some((a) => a.kind === "image") &&
+        !(await imagesAllowed(provider, model))
+      ) {
+        return NextResponse.json(
+          {
+            error: `${model} cannot read images. Pick a model that can, or remove the image.`,
+          },
+          { status: 422 },
+        );
+      }
+
+      // Before any write, so that a storage hiccup costs nothing but this
+      // request — nothing is claimed yet, and there is no node to roll back.
+      const load = await loadImageParts(supabase, turnAttachments);
+      if (!load.ok) {
+        return NextResponse.json(
+          { error: load.error },
+          { status: load.status },
+        );
+      }
+      images = load.images;
+    }
+
     const { data: created, error: createError } = await supabase
       .from("nodes")
       .insert({
@@ -394,21 +538,78 @@ export async function POST(request: Request) {
       await supabase.from("nodes").delete().eq("id", node.id);
       return NextResponse.json({ error: skillFailure }, { status: 400 });
     }
+
+    // Write order is load-bearing: the node exists, its context edges exist,
+    // and only then are files attached — check_node_attachment reads
+    // context_edges live to decide whether the owning card is reachable.
+    if (turnAttachments.length > 0) {
+      const drafts = turnAttachments.filter((a) => a.node_id === null);
+      const claimedPaths: string[] = [];
+
+      // A claim cannot be undone: the trigger refuses to move an attachment
+      // between cards, and the cascade from a rolled-back node would take the
+      // rows with it. So a rollback here takes the bytes too.
+      const rollback = async (message: string, status: number) => {
+        if (claimedPaths.length > 0) {
+          await supabase.storage.from(ATTACHMENTS_BUCKET).remove(claimedPaths);
+        }
+        await supabase.from("nodes").delete().eq("id", node.id);
+        return NextResponse.json({ error: message }, { status });
+      };
+
+      if (drafts.length > 0) {
+        const { data: claimed, error: claimError } = await supabase
+          .from("attachments")
+          .update({ node_id: node.id })
+          .in(
+            "id",
+            drafts.map((a) => a.id),
+          )
+          .is("node_id", null)
+          .select(CARD_ATTACHMENT_COLUMNS);
+        claimedAttachments = (claimed ?? []) as unknown as CardAttachment[];
+        const claimedIds = new Set(claimedAttachments.map((a) => a.id));
+        for (const draft of drafts) {
+          if (claimedIds.has(draft.id)) {
+            claimedPaths.push(draft.storage_path);
+            draft.node_id = node.id;
+          }
+        }
+        if (claimError || claimedIds.size !== drafts.length) {
+          return rollback(
+            claimError?.message ??
+              "One of those files has already been sent with another card.",
+            claimError ? 500 : 409,
+          );
+        }
+      }
+
+      const { error: linkError } = await supabase
+        .from("node_attachments")
+        .insert(
+          turnAttachments.map((attachment, index) => ({
+            node_id: node.id,
+            attachment_id: attachment.id,
+            filename: attachment.filename,
+            mime_type: attachment.mime_type,
+            kind: attachment.kind,
+            position: index,
+          })),
+        );
+      if (linkError) return rollback(linkError.message, 400);
+    }
   }
 
   const provider = node.provider as Provider;
 
   const nodesById = new Map(conversationNodes.map((n) => [n.id, n]));
-  const messages: ChatMessage[] = [];
-  for (const id of contextIds) {
-    const contextNode = nodesById.get(id);
-    if (!contextNode) continue;
-    messages.push({ role: "user", content: contextNode.prompt });
-    if (contextNode.response) {
-      messages.push({ role: "assistant", content: contextNode.response });
-    }
-  }
-  messages.push({ role: "user", content: node.prompt });
+  const messages = assembleMessages({
+    contextIds,
+    nodesById,
+    node,
+    attachments: turnAttachments,
+    images,
+  });
 
   const system = skillSystemPrompt(attachedSkills);
 
@@ -427,7 +628,12 @@ export async function POST(request: Request) {
         }
       };
 
-      send({ type: "node", node, edges: nodeEdges });
+      send({
+        type: "node",
+        node,
+        edges: nodeEdges,
+        attachments: claimedAttachments,
+      });
 
       let accumulated = "";
       let flushedLength = 0;

@@ -2,11 +2,19 @@
 
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useStreamStore } from "@/lib/store/stream-store";
+import type { CardAttachment } from "@/lib/types";
+
+// Shared so a card with no files keeps returning the same reference — `?? []`
+// here would make every card re-render on every store change.
+const NONE: CardAttachment[] = [];
 
 export function useCardState(nodeId: string | null) {
   const node = useGraphStore((s) => (nodeId ? s.nodes[nodeId] : undefined));
   const contextCount = useGraphStore((s) =>
     nodeId ? (s.contextCounts[nodeId] ?? 0) : 0,
+  );
+  const attachments = useGraphStore((s) =>
+    nodeId ? (s.attachments[nodeId] ?? NONE) : NONE,
   );
   const streaming = useStreamStore((s) =>
     nodeId ? s.streams[nodeId] : undefined,
@@ -23,6 +31,7 @@ export function useCardState(nodeId: string | null) {
     node,
     responseText,
     contextCount,
+    attachments,
     isStreaming: Boolean(isStreaming),
     isError: node?.status === "error",
   };

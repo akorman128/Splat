@@ -1,7 +1,12 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ConversationView } from "@/components/canvas/ConversationView";
-import type { CredentialSummary, SkillSummary } from "@/lib/types";
+import { CARD_ATTACHMENT_COLUMNS } from "@/lib/attachments/types";
+import type {
+  CardAttachment,
+  CredentialSummary,
+  SkillSummary,
+} from "@/lib/types";
 import type { Provider } from "@/lib/providers/models";
 
 export default async function ConversationPage({
@@ -31,12 +36,21 @@ export default async function ConversationPage({
     ]);
 
   const nodeIds = (nodes ?? []).map((n) => n.id);
-  const [{ data: edges }, { data: suggestions }] = nodeIds.length
-    ? await Promise.all([
-        supabase.from("context_edges").select("*").in("node_id", nodeIds),
-        supabase.from("suggestions").select("*").in("node_id", nodeIds),
-      ])
-    : [{ data: [] }, { data: [] }];
+  // Named columns, not select("*"): a claimed attachment carries the whole
+  // extracted text of its file, which is megabytes on a long PDF and of no use
+  // whatsoever to the canvas.
+  const [{ data: edges }, { data: suggestions }, { data: attachments }] =
+    nodeIds.length
+      ? await Promise.all([
+          supabase.from("context_edges").select("*").in("node_id", nodeIds),
+          supabase.from("suggestions").select("*").in("node_id", nodeIds),
+          supabase
+            .from("attachments")
+            .select(CARD_ATTACHMENT_COLUMNS)
+            .in("node_id", nodeIds)
+            .order("created_at"),
+        ])
+      : [{ data: [] }, { data: [] }, { data: [] }];
 
   return (
     <ConversationView
@@ -44,6 +58,7 @@ export default async function ConversationPage({
       nodes={nodes ?? []}
       edges={edges ?? []}
       suggestions={suggestions ?? []}
+      attachments={(attachments ?? []) as CardAttachment[]}
       credentials={(credentials ?? []).map((c) => ({
         provider: c.provider as Provider,
         key_last4: c.key_last4,
