@@ -200,6 +200,48 @@ export type Database = {
           },
         ]
       }
+      node_skills: {
+        Row: {
+          id: string
+          instructions: string
+          name: string
+          node_id: string
+          position: number
+          skill_id: string | null
+        }
+        Insert: {
+          id?: string
+          instructions: string
+          name: string
+          node_id: string
+          position: number
+          skill_id?: string | null
+        }
+        Update: {
+          id?: string
+          instructions?: string
+          name?: string
+          node_id?: string
+          position?: number
+          skill_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_skills_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_skills_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "skills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       nodes: {
         Row: {
           canvas_h: number
@@ -274,48 +316,6 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "nodes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      node_skills: {
-        Row: {
-          id: string
-          instructions: string
-          name: string
-          node_id: string
-          position: number
-          skill_id: string | null
-        }
-        Insert: {
-          id?: string
-          instructions: string
-          name: string
-          node_id: string
-          position: number
-          skill_id?: string | null
-        }
-        Update: {
-          id?: string
-          instructions?: string
-          name?: string
-          node_id?: string
-          position?: number
-          skill_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "node_skills_node_id_fkey"
-            columns: ["node_id"]
-            isOneToOne: false
-            referencedRelation: "nodes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "node_skills_skill_id_fkey"
-            columns: ["skill_id"]
-            isOneToOne: false
-            referencedRelation: "skills"
             referencedColumns: ["id"]
           },
         ]
@@ -432,10 +432,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      shared_conversation: {
-        Args: { p_token: string }
-        Returns: Json
+      node_ancestors: {
+        Args: { p_conversation: string; p_node: string }
+        Returns: string[]
       }
+      shared_conversation: { Args: { p_token: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never

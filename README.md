@@ -38,13 +38,14 @@ npm install
 cp .env.example .env.local
 ```
 
-Fill in three required values in `.env.local`:
+Fill in four required values in `.env.local`:
 
 | Variable | Where it comes from |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase dashboard → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page — the publishable (anon) key |
 | `APP_ENCRYPTION_KEY` | Generate one: `openssl rand -base64 32` |
+| `SUPABASE_PROJECT_ID` | The project ref — the subdomain of the URL above |
 
 (`.env.example` also lists three optional vars: OpenRouter attribution headers
 and a tldraw license key to drop the canvas watermark. Skip them.)
@@ -55,6 +56,14 @@ Push the schema, then start:
 supabase link --project-ref <project-ref>
 supabase db push
 npm run dev          # → http://localhost:3000
+```
+
+`lib/supabase/types.ts` is generated, never edited by hand. After any migration
+that changes the schema, push it and then regenerate:
+
+```sh
+npm run types:gen    # rewrites lib/supabase/types.ts from the database
+npm run types:check  # diffs the committed file against the database
 ```
 
 Sign up with email + password (auto-confirm is on, so no SMTP needed), paste a
