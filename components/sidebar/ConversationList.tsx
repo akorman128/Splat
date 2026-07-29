@@ -9,7 +9,6 @@ import {
   attachmentObjectPaths,
   removeAttachmentObjects,
 } from "@/lib/attachments-client";
-import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 import {
   Sidebar,
   SidebarContent,
@@ -71,7 +70,6 @@ export function AppSidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [creating, setCreating] = useState(false);
   const [skillTarget, setSkillTarget] = useState<SkillTarget | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(
     null,
@@ -87,25 +85,6 @@ export function AppSidebar({
     (list: ConversationSummary[], updated: ConversationSummary) =>
       list.map((c) => (c.id === updated.id ? updated : c)),
   );
-
-  async function newConversation() {
-    setCreating(true);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("conversations")
-      .insert({ title: DEFAULT_CONVERSATION_TITLE })
-      .select("id")
-      .single();
-    setCreating(false);
-    if (error || !data) {
-      toast.error("Could not create conversation", {
-        description: error?.message,
-      });
-      return;
-    }
-    router.push(`/c/${data.id}`);
-    router.refresh();
-  }
 
   async function deleteConversation() {
     if (!pendingDelete) return;
@@ -172,8 +151,8 @@ export function AppSidebar({
         <Button
           size="lg"
           className="mx-2 mb-1"
-          onClick={newConversation}
-          disabled={creating}
+          nativeButton={false}
+          render={<Link href="/c/new" />}
         >
           <Plus className="size-4" />
           New conversation

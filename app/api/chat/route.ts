@@ -31,6 +31,7 @@ import {
   MAX_ATTACHMENTS_PER_TURN,
 } from "@/lib/attachments/types";
 import type { ContentPart } from "@/lib/providers/types";
+import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 import type {
   AttachedSkill,
   CardAttachment,
@@ -41,7 +42,7 @@ import type {
 export const maxDuration = 300;
 
 type NewChatBody = {
-  conversationId: string;
+  conversationId: string | null;
   parentId: string | null;
   contextNodeIds: string[];
   skillIds?: string[];
@@ -310,15 +311,14 @@ export async function POST(request: Request) {
     }
   } else {
     const {
-      conversationId,
       parentId,
       contextNodeIds: rawContextNodeIds,
       prompt,
       provider,
       model,
     } = body;
+    let conversationId = body.conversationId ?? null;
     if (
-      !conversationId ||
       !prompt?.trim() ||
       !provider ||
       !isProvider(provider) ||
@@ -338,30 +338,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: conversation } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("id", conversationId)
-      .maybeSingle();
-    if (!conversation) {
-      return NextResponse.json(
-        { error: "Conversation not found" },
-        { status: 404 },
-      );
-    }
+    if (conversationId) {
+      const { data: conversation } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("id", conversationId)
+        .maybeSingle();
+      if (!conversation) {
+        return NextResponse.json(
+          { error: "Conversation not found" },
+          { status: 404 },
+        );
+      }
 
-    const [nodesRes, edgesRes] = await Promise.all([
-      supabase
-        .from("nodes")
-        .select("*")
-        .eq("conversation_id", conversationId),
-      supabase
-        .from("context_edges")
-        .select("*, nodes!context_edges_node_id_fkey!inner(conversation_id)")
-        .eq("nodes.conversation_id", conversationId),
-    ]);
-    conversationNodes = nodesRes.data ?? [];
-    conversationEdges = (edgesRes.data ?? []) as unknown as ContextEdgeRow[];
+      const [nodesRes, edgesRes] = await Promise.all([
+        supabase.from("nodes").select("*").eq("conversation_id", conversationId),
+        supabase
+          .from("context_edges")
+          .select("*, nodes!context_edges_node_id_fkey!inner(conversation_id)")
+          .eq("nodes.conversation_id", conversationId),
+      ]);
+      conversationNodes = nodesRes.data ?? [];
+      conversationEdges = (edgesRes.data ?? []) as unknown as ContextEdgeRow[];
+    } else {
+      if (parentId || contextNodeIds.length > 0) {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
+      conversationNodes = [];
+      conversationEdges = [];
+    }
 
     const knownIds = new Set(conversationNodes.map((n) => n.id));
     if (parentId && !knownIds.has(parentId)) {
@@ -421,6 +426,9 @@ export async function POST(request: Request) {
       );
     }
     if (attachmentIds.length > 0) {
+      if (!conversationId) {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
       const { data: rows } = await supabase
         .from("attachments")
         .select(TURN_ATTACHMENT_COLUMNS)
@@ -474,6 +482,31 @@ export async function POST(request: Request) {
       images = load.images;
     }
 
+    // Created only now, after every validation above has passed, so a
+    // rejected or abandoned draft never leaves an empty row in the sidebar.
+    let discardDraft: (() => Promise<unknown>) | null = null;
+    if (!conversationId) {
+      const { data: conversation, error: conversationError } = await supabase
+        .from("conversations")
+        .insert({ title: DEFAULT_CONVERSATION_TITLE })
+        .select("id")
+        .single();
+      if (conversationError || !conversation) {
+        return NextResponse.json(
+          {
+            error:
+              conversationError?.message ?? "Could not start a conversation",
+          },
+          { status: 500 },
+        );
+      }
+      conversationId = conversation.id;
+      // Nodes and edges cascade from the conversation, so this is the entire rollback.
+      discardDraft = async () => {
+        await supabase.from("conversations").delete().eq("id", conversation.id);
+      };
+    }
+
     const { data: created, error: createError } = await supabase
       .from("nodes")
       .insert({
@@ -490,6 +523,7 @@ export async function POST(request: Request) {
       .select()
       .single();
     if (createError || !created) {
+      await discardDraft?.();
       return NextResponse.json(
         { error: createError?.message ?? "Could not create node" },
         { status: 500 },
@@ -510,6 +544,7 @@ export async function POST(request: Request) {
         .select();
       if (edgeError) {
         await supabase.from("nodes").delete().eq("id", node.id);
+        await discardDraft?.();
         return NextResponse.json({ error: edgeError.message }, { status: 400 });
       }
       nodeEdges = insertedEdges ?? [];
@@ -524,6 +559,7 @@ export async function POST(request: Request) {
     );
     if (skillFailure) {
       await supabase.from("nodes").delete().eq("id", node.id);
+      await discardDraft?.();
       return NextResponse.json({ error: skillFailure }, { status: 400 });
     }
 
@@ -541,6 +577,7 @@ export async function POST(request: Request) {
           await supabase.storage.from(ATTACHMENTS_BUCKET).remove(claimedPaths);
         }
         await supabase.from("nodes").delete().eq("id", node.id);
+        await discardDraft?.();
         return NextResponse.json({ error: message }, { status });
       };
 
