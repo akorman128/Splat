@@ -23,7 +23,11 @@ export type ContentPart =
       data: string;
       width: number | null;
       height: number | null;
-    };
+    }
+  // A whole PDF, base64, for files no text could be extracted from — the model
+  // reads the pages itself. estTokens rides along for the same reason an image's
+  // dimensions do: the byte length says nothing about what the pages cost.
+  | { type: "document"; data: string; filename: string; estTokens: number };
 
 // Discriminated on role: an image block in an assistant turn is a 400 from
 // Anthropic, silently dropped by OpenRouter and passed through by OpenAI, so

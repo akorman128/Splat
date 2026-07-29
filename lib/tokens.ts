@@ -33,3 +33,9 @@ export function estimateImageTokens(
   if (!width || !height) return IMAGE_TOKEN_ESTIMATE;
   return Math.min(1600, Math.ceil((width * height) / 750));
 }
+
+// A PDF page sent whole is rendered as an image and read alongside whatever text
+// the provider pulls out of it; Anthropic puts that between 1,500 and 3,000
+// tokens a page. Only textless PDFs are priced this way — one that extracted
+// cleanly is sent as its text and costs what the text costs.
+export const PDF_PAGE_TOKEN_ESTIMATE = 2000;

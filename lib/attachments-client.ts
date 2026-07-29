@@ -64,6 +64,14 @@ export function uploadAttachment({
   return { promise, abort: () => xhr.abort() };
 }
 
+export async function createConversation(): Promise<string> {
+  const { id } = await apiFetch<{ id: string }>(
+    "/api/conversations",
+    postJson({}),
+  );
+  return id;
+}
+
 export async function deleteAttachment(id: string): Promise<void> {
   await apiFetch(`/api/attachments?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
