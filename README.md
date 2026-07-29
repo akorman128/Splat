@@ -57,6 +57,14 @@ supabase db push
 npm run dev          # → http://localhost:3000
 ```
 
+`lib/supabase/types.ts` is generated, never edited by hand. After any migration
+that changes the schema, push it and then regenerate:
+
+```sh
+npm run types:gen    # rewrites lib/supabase/types.ts from the database
+npm run types:check  # diffs the committed file against the database
+```
+
 Sign up with email + password (auto-confirm is on, so no SMTP needed), paste a
 provider key on the onboarding screen, and you're in. GitHub OAuth is wired up
 but needs a GitHub OAuth app configured under *Authentication → Providers*
