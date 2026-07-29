@@ -58,8 +58,8 @@ npm run dev          # → http://localhost:3000
 ```
 
 Sign up with email + password (auto-confirm is on, so no SMTP needed), paste a
-provider key on the onboarding screen, and you're in. Google OAuth is wired up
-but needs a Google Cloud client configured under *Authentication → Providers*
+provider key on the onboarding screen, and you're in. GitHub OAuth is wired up
+but needs a GitHub OAuth app configured under *Authentication → Providers*
 before that button does anything.
 
 ## How it fits together
