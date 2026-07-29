@@ -35,7 +35,7 @@ export function ConversationView({
   credentials,
   skills,
 }: {
-  conversationId: string;
+  conversationId: string | null;
   nodes: NodeRow[];
   edges: ContextEdgeRow[];
   suggestions: SuggestionRow[];
@@ -70,12 +70,15 @@ export function ConversationView({
   }
 
   useEffect(() => {
-    useGraphStore
-      .getState()
-      .init({ conversationId, nodes, edges, suggestions, attachments });
+    const graph = useGraphStore.getState();
+    // Skip re-init if the store already adopted this id (a draft's first card
+    // streaming in) — re-initing would wipe the card mid-stream.
+    if (graph.conversationId !== conversationId) {
+      graph.init({ conversationId, nodes, edges, suggestions, attachments });
+    }
     useComposerStore.getState().setRegenerateNode(null);
     useAttachmentStore.getState().reset();
-    sweepAttachments(conversationId);
+    if (conversationId) sweepAttachments(conversationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 

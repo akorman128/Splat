@@ -26,13 +26,14 @@ type GraphState = {
   removedNodeIds: Record<string, true>;
 
   init(payload: {
-    conversationId: string;
+    conversationId: string | null;
     nodes: CardNode[];
     edges: ContextEdgeRow[];
     suggestions: SuggestionRow[];
     attachments: CardAttachment[];
     readOnly?: boolean;
   }): void;
+  adoptConversation(id: string): void;
   upsertNode(node: CardNode): void;
   addEdges(edges: ContextEdgeRow[]): void;
   addAttachments(attachments: CardAttachment[]): void;
@@ -117,6 +118,10 @@ export const useGraphStore = create<GraphState>((set) => ({
       focusNodeId: null,
       removedNodeIds: {},
     });
+  },
+
+  adoptConversation(id) {
+    set((state) => (state.conversationId ? state : { conversationId: id }));
   },
 
   upsertNode(node) {

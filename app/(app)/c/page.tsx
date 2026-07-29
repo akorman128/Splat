@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { NewConversationPrompt } from "./NewConversationPrompt";
 
 export default async function AppHome() {
   const supabase = await createClient();
@@ -24,9 +23,5 @@ export default async function AppHome() {
     .limit(1)
     .maybeSingle();
 
-  if (newest) {
-    redirect(`/c/${newest.id}`);
-  }
-
-  return <NewConversationPrompt />;
+  redirect(newest ? `/c/${newest.id}` : "/c/new");
 }
