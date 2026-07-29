@@ -132,7 +132,7 @@ export function SkillDialog({
           onOpenChange(open);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="flex flex-col overflow-hidden sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{creating ? "New skill" : "Skill"}</DialogTitle>
             <DialogDescription>
@@ -156,37 +156,39 @@ export function SkillDialog({
                 event.preventDefault();
                 save();
               }}
-              className="grid gap-4"
+              className="flex min-h-0 flex-1 flex-col gap-4"
             >
-              <div className="space-y-2">
-                <Label htmlFor="skill-name">Name</Label>
-                <Input
-                  id="skill-name"
-                  autoFocus={creating}
-                  value={name}
-                  maxLength={MAX_SKILL_NAME_LENGTH}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Code reviewer"
-                  autoComplete="off"
-                />
-                <p className="text-xs text-muted-foreground">
-                  What you&apos;ll type after <code>/</code> in the prompt box.
-                </p>
-              </div>
+              <div className="-mx-4 min-h-0 flex-1 space-y-4 overflow-y-auto px-4">
+                <div className="space-y-2">
+                  <Label htmlFor="skill-name">Name</Label>
+                  <Input
+                    id="skill-name"
+                    autoFocus={creating}
+                    value={name}
+                    maxLength={MAX_SKILL_NAME_LENGTH}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Code reviewer"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    What you&apos;ll type after <code>/</code> in the prompt box.
+                  </p>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="skill-instructions">Instructions</Label>
-                <Textarea
-                  id="skill-instructions"
-                  value={instructions}
-                  onChange={(event) => setInstructions(event.target.value)}
-                  placeholder="You are a meticulous code reviewer. Lead with correctness, then clarity…"
-                  className="min-h-56 font-mono text-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Sent as the model&apos;s instructions alongside the prompt,
-                  ahead of any cards you include as context.
-                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="skill-instructions">Instructions</Label>
+                  <Textarea
+                    id="skill-instructions"
+                    value={instructions}
+                    onChange={(event) => setInstructions(event.target.value)}
+                    placeholder="You are a meticulous code reviewer. Lead with correctness, then clarity…"
+                    className="max-h-[45dvh] min-h-56 font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Sent as the model&apos;s instructions alongside the prompt,
+                    ahead of any cards you include as context.
+                  </p>
+                </div>
               </div>
 
               <DialogFooter>
