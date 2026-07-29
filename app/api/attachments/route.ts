@@ -6,8 +6,11 @@ import { extractAttachment } from "@/lib/attachments/extract";
 import {
   ATTACHMENTS_BUCKET,
   CARD_ATTACHMENT_COLUMNS,
+  MAX_INLINE_BYTES,
   SIZE_CAPS,
   classify,
+  formatBytes,
+  sentAsPages,
   sizeCapMessage,
   storageExtension,
 } from "@/lib/attachments/types";
@@ -91,6 +94,23 @@ export async function POST(request: Request) {
   // Past this line the object exists, so every failure has to take it back out.
   try {
     const extracted = await extractAttachment(bytes, kind);
+
+    // Caught here rather than at send: a PDF with no text to extract travels as
+    // its own bytes, so one too large to fit a request is a file the composer
+    // would take and then refuse to send for as long as it sat there.
+    if (
+      sentAsPages({ kind, extract_status: extracted.status }) &&
+      file.size > MAX_INLINE_BYTES
+    ) {
+      await supabase.storage.from(ATTACHMENTS_BUCKET).remove([path]);
+      return NextResponse.json(
+        {
+          error: `${filename} is a ${formatBytes(file.size)} PDF with no text to extract, so it has to be sent as pages — and the limit for that is ${formatBytes(MAX_INLINE_BYTES)}.`,
+        },
+        { status: 413 },
+      );
+    }
+
     const { data: row, error: insertError } = await supabase
       .from("attachments")
       .insert({

@@ -7,6 +7,7 @@ import {
 import {
   EMPTY_TEXT_THRESHOLD,
   MAX_EXTRACTED_CHARS,
+  PDF_MIN_CHARS_PER_PAGE,
   type AttachmentKind,
   type ExtractStatus,
 } from "./types";
@@ -143,7 +144,10 @@ export async function extractAttachment(
   }
 
   const normalised = raw.replace(/\r\n/g, "\n").trim();
-  if (normalised.length < EMPTY_TEXT_THRESHOLD) {
+  const textless =
+    normalised.length < EMPTY_TEXT_THRESHOLD ||
+    (pages > 0 && normalised.length / pages < PDF_MIN_CHARS_PER_PAGE);
+  if (textless) {
     return {
       status: "empty",
       text: null,

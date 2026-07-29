@@ -44,6 +44,11 @@ export const MAX_EXTRACTED_CHARS = 400_000;
 
 export const EMPTY_TEXT_THRESHOLD = 20;
 
+// Scanned pages often carry a stamped header or footer in real text, which clears
+// the threshold above for the whole file while leaving every page unread. What
+// decides a PDF is how much text a page has, not how much the document has.
+export const PDF_MIN_CHARS_PER_PAGE = 50;
+
 export const MAX_ATTACHMENTS_PER_TURN = 20;
 
 // CardAttachmentList derives its query staleTime from this.
