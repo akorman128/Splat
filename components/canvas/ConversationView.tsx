@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { ChevronUp } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
@@ -47,7 +48,13 @@ export function ConversationView({
   credentials: CredentialSummary[];
   skills: SkillSummary[];
 }) {
-  const initialized = useGraphStore((s) => s.conversationId === conversationId);
+  const router = useRouter();
+  const storeConversationId = useGraphStore((s) => s.conversationId);
+  // A draft that has adopted a conversation is still this view: the store runs
+  // ahead of the route until the replace below lands.
+  const initialized =
+    storeConversationId === conversationId ||
+    (conversationId === null && storeConversationId !== null);
   const hasNodes = useGraphStore((s) => Object.keys(s.nodes).length > 0);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -75,16 +82,27 @@ export function ConversationView({
 
   useEffect(() => {
     const graph = useGraphStore.getState();
-    // Skip re-init if the store already adopted this id (a draft's first card
-    // streaming in) — re-initing would wipe the card mid-stream.
+    // Skip if the store already adopted this id — a draft's first card streaming
+    // in, or a file attached before the first prompt. Re-initing would wipe the
+    // card mid-stream, and the reset would drop the chips that created the
+    // conversation in the first place.
     if (graph.conversationId !== conversationId) {
       graph.init({ conversationId, nodes, edges, suggestions, attachments });
+      useComposerStore.getState().setRegenerateNode(null);
+      useAttachmentStore.getState().reset();
     }
-    useComposerStore.getState().setRegenerateNode(null);
-    useAttachmentStore.getState().reset();
     if (conversationId) sweepAttachments(conversationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  // Attaching a file on the draft route writes the conversation before any card
+  // exists, so the address bar has to catch up — otherwise a reload lands back
+  // on an empty /c/new and the sidebar never shows the new conversation.
+  useEffect(() => {
+    if (conversationId !== null || storeConversationId === null) return;
+    router.replace(`/c/${storeConversationId}`);
+    router.refresh();
+  }, [conversationId, storeConversationId, router]);
 
   if (!initialized) return <CanvasSpinner />;
 

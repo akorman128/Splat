@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import {
   UploadAbortedError,
+  createConversation,
   deleteAttachment,
   downscaleImage,
   isResizable,
@@ -39,6 +40,24 @@ type AttachmentState = {
 
 const aborts = new Map<string, () => void>();
 
+// Memoised so a multi-file drop onto the draft canvas creates one conversation
+// rather than one per file.
+let creating: Promise<string> | null = null;
+
+function ensureConversation(): Promise<string> {
+  const existing = useGraphStore.getState().conversationId;
+  if (existing) return Promise.resolve(existing);
+  creating ??= createConversation()
+    .then((id) => {
+      useGraphStore.getState().adoptConversation(id);
+      return id;
+    })
+    .finally(() => {
+      creating = null;
+    });
+  return creating;
+}
+
 function localId(): string {
   return crypto.randomUUID();
 }
@@ -47,8 +66,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
   drafts: [],
 
   enqueue(files, options) {
-    const conversationId = useGraphStore.getState().conversationId;
-    if (!conversationId || files.length === 0) return;
+    if (files.length === 0) return;
 
     // The composer hides its own controls during a regeneration; this catches
     // the canvas drop, which does not go through them.
@@ -109,7 +127,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
         ],
       }));
 
-      void start(id, named, cap, conversationId);
+      void start(id, named, cap);
     }
   },
 
@@ -153,18 +171,15 @@ function patch(id: string, fields: Partial<DraftAttachment>): void {
   }));
 }
 
-async function start(
-  id: string,
-  file: File,
-  cap: number,
-  conversationId: string,
-): Promise<void> {
+function live(id: string): boolean {
+  return useAttachmentStore.getState().drafts.some((d) => d.localId === id);
+}
+
+async function start(id: string, file: File, cap: number): Promise<void> {
   const prepared = await downscaleImage(file);
   // A cancel during the resize already dropped the row; uploading now would
   // orphan the object.
-  if (!useAttachmentStore.getState().drafts.some((d) => d.localId === id)) {
-    return;
-  }
+  if (!live(id)) return;
 
   if (prepared.size > cap) {
     patch(id, {
@@ -173,6 +188,18 @@ async function start(
     });
     return;
   }
+
+  let conversationId: string;
+  try {
+    conversationId = await ensureConversation();
+  } catch (err) {
+    patch(id, {
+      status: "error",
+      error: err instanceof Error ? err.message : "Could not start a conversation",
+    });
+    return;
+  }
+  if (!live(id)) return;
 
   const upload = uploadAttachment({
     file: prepared,
