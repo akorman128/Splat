@@ -10,6 +10,9 @@ import type {
 
 type GraphState = {
   conversationId: string | null;
+  // True only between a conversation being adopted and the route catching up, so
+  // the draft route can tell cards it owns from the ones it was opened over.
+  adopted: boolean;
   readOnly: boolean;
   nodes: Record<string, CardNode>;
   edges: ContextEdgeRow[];
@@ -75,6 +78,7 @@ function groupByOwner(
 
 export const useGraphStore = create<GraphState>((set) => ({
   conversationId: null,
+  adopted: false,
   readOnly: false,
   nodes: {},
   edges: [],
@@ -105,6 +109,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     }
     set({
       conversationId,
+      adopted: false,
       readOnly,
       nodes: Object.fromEntries(nodes.map((n) => [n.id, n])),
       edges,
@@ -121,7 +126,9 @@ export const useGraphStore = create<GraphState>((set) => ({
   },
 
   adoptConversation(id) {
-    set((state) => (state.conversationId ? state : { conversationId: id }));
+    set((state) =>
+      state.conversationId ? state : { conversationId: id, adopted: true },
+    );
   },
 
   upsertNode(node) {

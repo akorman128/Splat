@@ -51,14 +51,14 @@ export function ConversationView({
   const router = useRouter();
   const storeConversationId = useGraphStore((s) => s.conversationId);
   const storeHasNodes = useGraphStore((s) => Object.keys(s.nodes).length > 0);
-  // The draft route has nothing to match the store against, and by construction
-  // no cards of its own — so it is always ready and always the empty composer.
-  // Deciding either from the store would show whatever conversation the store
-  // still holds: on the render that arrives here from another conversation, that
-  // is the one being navigated away from.
+  const adopted = useGraphStore((s) => s.adopted);
   const draftRoute = conversationId === null;
   const initialized = draftRoute || storeConversationId === conversationId;
-  const hasNodes = !draftRoute && storeHasNodes;
+  // On the draft route the store can still hold the conversation this one was
+  // opened from, whose cards belong to a route that is being left. Only a
+  // conversation adopted here — by a file attached, or by the first card
+  // streaming in — has cards this route should draw.
+  const hasNodes = storeHasNodes && (!draftRoute || adopted);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [composerHidden, setComposerHidden] = useState(false);
