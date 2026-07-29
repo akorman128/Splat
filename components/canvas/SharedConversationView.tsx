@@ -23,8 +23,6 @@ export function SharedConversationView({ shared }: { shared: SharedConversation 
       nodes,
       edges,
       suggestions,
-      // Name-only: the storage policies are `to authenticated`, so a viewer
-      // holding this link cannot open the bytes behind a pill.
       attachments: attachments ?? [],
       readOnly: true,
     });

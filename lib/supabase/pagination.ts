@@ -1,10 +1,5 @@
-// PostgREST caps a select at db-max-rows — 1000 by default — and a short read
-// is not a smaller answer but a wrong one wherever the rows drive a delete. The
-// loop stops on an empty page rather than a short one, because the server's cap
-// is what it is and may be lower than the page asked for.
-//
-// The error is returned rather than handled: one caller treats a failed read as
-// fatal, the other logs it and carries on with what it has.
+// Stops on an empty page rather than a short one: PostgREST's db-max-rows may
+// be lower than the page asked for.
 const PAGE = 1000;
 
 export async function selectAllPages<Row, Err>(

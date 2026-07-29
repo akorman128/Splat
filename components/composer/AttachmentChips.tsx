@@ -37,9 +37,6 @@ function detailOf(draft: DraftAttachment): Detail {
   };
 }
 
-// A chip is a checked attachment. Nothing here toggles, because a file being in
-// the composer is exactly what "send this file with this prompt" means — the
-// context picker takes over the moment the card owns it.
 export function AttachmentChips() {
   const drafts = useAttachmentStore((s) => s.drafts);
   const remove = useAttachmentStore((s) => s.remove);

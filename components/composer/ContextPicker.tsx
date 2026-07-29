@@ -34,9 +34,6 @@ export function ContextPicker({
     return topoOrder([...ids], all, edges);
   }, [parent.id, nodes, edges]);
 
-  // A file is priced on its own row and counted on its own terms: unchecking a
-  // card no longer means silently paying for the 18k-token PDF underneath it,
-  // and re-checking the PDF no longer drags the whole Q&A back in.
   const totalTokens = orderedAncestors.reduce((sum, id) => {
     const node = nodes[id];
     if (!node) return sum;

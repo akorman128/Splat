@@ -4,19 +4,10 @@ import { currentUser } from "@/lib/supabase/dal";
 import { selectAllPages } from "@/lib/supabase/pagination";
 import { ATTACHMENTS_BUCKET } from "@/lib/attachments/types";
 
-// Reclaims what the happy path cannot: composers abandoned before send, and
-// objects whose row went away underneath them.
-//
-// This runs as the signed-in user, not as a cron job, and that is deliberate.
-// A cron request carries no session, so it could only work through a
-// service-role client — and the whole security story of this app is that RLS
-// scopes everything to auth.uid() and no such client exists (see the README).
-// Every user reclaims their own leftovers the next time they open a
-// conversation, which costs one request and needs no elevated key anywhere.
+// Runs as the signed-in user rather than as a cron job: a cron request carries
+// no session, so it would need a service-role client, and this app has none.
 export const maxDuration = 30;
 
-// Long enough that a slow upload on a bad connection is never mistaken for
-// abandonment.
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000;
 
@@ -60,25 +51,14 @@ export async function POST(request: Request) {
     drafts = abandoned.length;
   }
 
-  // Objects with no row: a claim that failed and rolled back, an insert that
-  // errored after the upload, or — the one that actually loses money — a
-  // conversation deleted before its objects were removed. That last case is
-  // unrecoverable from the rows, because the cascade takes every storage_path
-  // with the conversation, so the listing has to be the source of truth here
-  // rather than the table.
-  //
-  // Every folder under the user's prefix is one conversation. A folder with no
-  // surviving rows belongs to a conversation that no longer exists, and
-  // everything in it is reclaimable. The common case — no deleted
-  // conversations — costs one list call and one select.
+  // One folder per conversation. A deleted conversation takes every
+  // storage_path with it, so the listing — not the table — is what finds them.
   const { data: folders } = await supabase.storage
     .from(ATTACHMENTS_BUCKET)
     .list(user.id, { limit: 1000 });
 
   // Every row, paged, before anything is deleted: a conversation missing from
-  // the answer looks deleted, so the objects behind its live rows are removed
-  // while the rows stay, and every pill on that canvas becomes a broken link
-  // with no way back.
+  // the answer looks deleted, and its live files get swept.
   const { rows, error: rowsError } = await selectAllPages((from, to) =>
     supabase
       .from("attachments")
@@ -86,8 +66,8 @@ export async function POST(request: Request) {
       .order("storage_path")
       .range(from, to),
   );
-  // A read that failed is indistinguishable from a table with nothing in it,
-  // and one of those two answers deletes everything the user owns.
+  // A failed read is indistinguishable from an empty table, and one of those
+  // two answers deletes everything the user owns.
   if (rowsError) {
     return NextResponse.json(
       { error: "Could not read the attachment list." },
@@ -103,14 +83,11 @@ export async function POST(request: Request) {
     .filter((entry) => entry.id === null)
     .map((entry) => entry.name);
   // The folder on screen is swept even when it holds no rows yet, so a failed
-  // first upload is reclaimed rather than waiting for the conversation to be
-  // deleted.
+  // first upload does not wait for the conversation to be deleted.
   const sweepable = conversationFolders.filter(
     (name) => !liveConversations.has(name) || name === conversationId,
   );
 
-  // The folders have nothing to say to each other, and remove() takes paths
-  // across prefixes, so this is two round trips rather than two per folder.
   const listings = await Promise.all(
     sweepable.map(async (folder) => {
       const prefix = `${user.id}/${folder}`;
@@ -119,8 +96,7 @@ export async function POST(request: Request) {
         .list(prefix, { limit: 1000 });
       return (objects ?? [])
         .filter((object) => {
-          // An upload in flight has no row yet; only objects old enough to
-          // have finished either way are candidates.
+          // An upload in flight has no row yet.
           const createdAt = object.created_at
             ? Date.parse(object.created_at)
             : now;

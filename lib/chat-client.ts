@@ -13,8 +13,6 @@ export type SubmitParams = {
   parentId: string | null;
   contextNodeIds: string[];
   skillIds: string[];
-  // Drafts this card is about to claim, plus any ancestor file the picker
-  // re-checked. The route tells the two apart by node_id.
   attachmentIds: string[];
   prompt: string;
   provider: Provider;

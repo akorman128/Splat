@@ -55,10 +55,8 @@ function providerLabel(provider: Provider): string {
     : conversationModelLabel(provider);
 }
 
-// Ticks whose owning card is gone are excluded, because they have no row left
-// to send: deleting the card that owned a ticked file otherwise leaves its id
-// checked with no checkbox to untick, and the route answers every subsequent
-// send with a 400.
+// Ticks whose owning card is gone are excluded: they have no row left to send,
+// and the route answers the whole list with a 400.
 function liveCheckedAttachmentIds(
   checkedAttachments: Record<string, boolean>,
 ): string[] {
@@ -73,10 +71,8 @@ function liveCheckedAttachmentIds(
 }
 
 // Drafts and ticked ancestor files reach the route as one list measured
-// against one cap. Counting them apart is how a send ends in a 400 with no
-// chip and no checkbox to point at, so the composer counts them together —
-// uploads still in flight included, because they will be ready by the time
-// Send is pressed.
+// against one cap, so they are counted together — uploads still in flight
+// included, because they will be ready by the time Send is pressed.
 function turnAttachmentCount(
   checkedAttachments: Record<string, boolean>,
 ): number {
@@ -105,9 +101,6 @@ export function Composer({
   const [attached, setAttached] = useState<SkillSummary[]>([]);
   const [trigger, setTrigger] = useState<SkillTrigger | null>(null);
   const [highlight, setHighlight] = useState(0);
-  // Attachments owned by cards in context, re-checked for this turn. Empty is
-  // the answer that matters: a file rides along on the turn it was attached and
-  // never again unless someone asks for it back.
   const [checkedAttachments, setCheckedAttachments] = useState<
     Record<string, boolean>
   >({});
@@ -115,9 +108,8 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // A boolean, not the array: patch() replaces `drafts` on every progress tick
-  // of every upload, and subscribing to it re-renders the whole composer —
-  // context picker included — dozens of times per file.
+  // A boolean, not the array: `drafts` is replaced on every progress tick, and
+  // subscribing to it re-renders the whole composer dozens of times per file.
   const uploading = useAttachmentStore((s) =>
     s.drafts.some((d) => d.status === "uploading"),
   );
@@ -210,9 +202,8 @@ export function Composer({
     }
   }
 
-  // The skills a card was made with, so a regeneration starts from the same set
-  // and can be edited before it runs. A skill deleted since then has no id left
-  // to re-send and drops out of the set.
+  // A skill deleted since the card was made has no id left to re-send, and
+  // drops out of the set.
   useEffect(() => {
     if (!regenerateNodeId) return;
     let active = true;
@@ -323,9 +314,7 @@ export function Composer({
     if (!text || !provider) return;
 
     // Enter reaches submit() without passing the Send button, so the guard has
-    // to live here too: sending mid-upload would quietly leave the file out of
-    // the very prompt it was attached to, and the model would answer about a
-    // document it never received.
+    // to live here too.
     if (useAttachmentStore.getState().drafts.some((d) => d.status === "uploading")) {
       toast.error("Still uploading — one moment.");
       return;
@@ -343,15 +332,10 @@ export function Composer({
           .filter(([id, v]) => v && graph.nodes[id])
           .map(([id]) => id)
       : [];
-    // Drafts are what this card is about to own; the checked ones are older
-    // files being replayed. The route tells them apart by node_id, so they can
-    // travel as one list.
     const attachmentIds = [
       ...readyAttachmentIds(useAttachmentStore.getState().drafts),
       ...liveCheckedAttachmentIds(checkedAttachments),
     ];
-    // The route counts the same list and answers 400, which arrives as a
-    // failed send with the prompt handed back and nothing to act on.
     if (attachmentIds.length > MAX_ATTACHMENTS_PER_TURN) {
       toast.error(
         `This prompt carries ${attachmentIds.length} files — the limit is ${MAX_ATTACHMENTS_PER_TURN}. Remove a chip or untick a file.`,
@@ -381,10 +365,7 @@ export function Composer({
         },
         onNode: () => {
           setSending(false);
-          // The card owns them now — the composer lets go rather than deleting,
-          // which would take the card's own files with it. Only the ones that
-          // actually went: a file dropped while this card was streaming is not
-          // part of it and keeps its chip.
+          // Let go rather than delete — the card owns them now.
           useAttachmentStore.getState().released(attachmentIds);
           setCheckedAttachments({});
         },
@@ -418,8 +399,6 @@ export function Composer({
     );
   }
 
-  // A regeneration replays the card's own files; there is nothing to attach to
-  // an answer being rewritten in place.
   const attachable = !regenerateNodeId;
 
   function pick(files: File[], synthesiseNames = false) {
@@ -434,11 +413,9 @@ export function Composer({
       )}
       onDragOver={(event) => {
         if (!event.dataTransfer.types.includes("Files")) return;
-        // Unconditionally, even when nothing here will take the file: a
-        // dragover that is not prevented leaves the browser to handle the
-        // drop, and the browser navigates to the file — taking the canvas
-        // with it. The composer sits outside the tldraw container, so its own
-        // guards never see this drag.
+        // Unconditionally, even when nothing here will take the file: an
+        // unprevented dragover lets the browser navigate to the dropped file,
+        // taking the canvas with it.
         event.preventDefault();
         if (attachable) setDragging(true);
       }}
@@ -592,18 +569,15 @@ export function Composer({
           onPaste={(e) => {
             const files = Array.from(e.clipboardData.files);
             if (files.length === 0) return;
-            // A screenshot arrives as "image.png" every single time, so three
-            // pastes would give three identical chips. Real files keep their
-            // names.
+            // A screenshot arrives as "image.png" every time; real files keep
+            // their names.
             const anonymous = files.every(
               (file) => !file.name || /^image\.\w+$/i.test(file.name),
             );
-            // Copying a range out of a spreadsheet or a document puts a
-            // rendered picture of the selection on the clipboard beside the
-            // text itself. The text is what the paste was for, and swallowing
-            // it to attach a screenshot of itself is not a trade anyone asked
-            // for. A screenshot proper carries no text, and a file copied in
-            // Finder carries its own name, so neither is caught by this.
+            // Copying out of a spreadsheet puts a rendered picture of the
+            // selection on the clipboard beside the text; the text is what the
+            // paste was for. A screenshot proper carries no text, and a file
+            // copied in Finder carries its own name, so neither is caught.
             if (anonymous && e.clipboardData.getData("text/plain").trim()) {
               return;
             }

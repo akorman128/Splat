@@ -10,21 +10,17 @@ import type {
 
 type GraphState = {
   conversationId: string | null;
-  // A shared canvas is a snapshot: no composer, no card actions, no writes.
   readOnly: boolean;
   nodes: Record<string, CardNode>;
   edges: ContextEdgeRow[];
   contextCounts: Record<string, number>;
   suggestions: Record<string, SuggestionRow[]>;
-  // Keyed by the card that owns the file, which is the card that displays it.
-  // A descendant replaying a file does not get a copy here — the replay is a
-  // node_attachments row, and it is the owner that shows the chip.
+  // Keyed by the card that owns the file, not by every card that replays it.
   attachments: Record<string, CardAttachment[]>;
   selectedNodeId: string | null;
   hoveredNodeId: string | null;
   expandedNodeId: string | null;
   deletingNodeIds: string[];
-  // Set when a freshly created card should pull the camera to it.
   focusNodeId: string | null;
   // Deleted ids are kept so a stream still in flight cannot re-add its card.
   removedNodeIds: Record<string, true>;

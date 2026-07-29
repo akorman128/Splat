@@ -6,8 +6,6 @@ import { selectAllPages } from "@/lib/supabase/pagination";
 import { ATTACHMENTS_BUCKET } from "@/lib/attachments/types";
 import type { CardAttachment } from "@/lib/types";
 
-// Every provider downscales past this, so sending more is bytes and tokens
-// spent on pixels nobody will look at.
 const MAX_IMAGE_DIMENSION = 1568;
 
 export class UploadAbortedError extends Error {
@@ -22,10 +20,8 @@ export type Upload = {
   abort: () => void;
 };
 
-// XMLHttpRequest, not fetch. A fetch request body can only report upload
-// progress through `duplex: "half"` streaming, which is Chromium-over-HTTP/2
-// only — and a file upload with no progress bar reads as a hang. This is the
-// one place in the app that talks to the network without postJson.
+// XMLHttpRequest, not fetch: a fetch body can only report upload progress
+// through `duplex: "half"` streaming, which is Chromium-over-HTTP/2 only.
 export function uploadAttachment({
   file,
   conversationId,
@@ -74,11 +70,8 @@ export async function deleteAttachment(id: string): Promise<void> {
   });
 }
 
-// Where a card's — or a conversation's — objects live, read before the rows go.
-// The row is the only record of the path and the delete cascades it away, so
-// this has to run first; removing the objects does not, and must not, because
-// a delete that then fails would leave a card whose pills point at files that
-// are no longer there. Paths first, delete, then removeAttachmentObjects.
+// Must run before the rows go: the row is the only record of the path, and the
+// delete cascades it away. Paths first, delete, then removeAttachmentObjects.
 export async function attachmentObjectPaths(
   scope: { nodeIds: string[] } | { conversationId: string },
 ): Promise<string[]> {
@@ -99,11 +92,8 @@ export async function attachmentObjectPaths(
   return rows.map((row) => row.storage_path);
 }
 
-// A failure here is logged rather than thrown — losing a delete because storage
-// hiccuped would be worse than the leak. This is the fast path, not the
-// guarantee: /api/attachments/sweep reclaims a whole conversation folder that
-// has no rows left, which is exactly what a delete that got this far and no
-// further looks like.
+// Logged rather than thrown: losing a delete because storage hiccuped would be
+// worse than the leak, which the sweep reclaims anyway.
 export async function removeAttachmentObjects(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
   const { error } = await createClient()
@@ -114,8 +104,6 @@ export async function removeAttachmentObjects(paths: string[]): Promise<void> {
   }
 }
 
-// Once per conversation per page load, and never awaited: reclaiming leftovers
-// is housekeeping, and nothing on screen should wait for it or hear about it.
 const swept = new Set<string>();
 
 export function sweepAttachments(conversationId: string): void {
@@ -136,9 +124,7 @@ export async function fetchAttachmentUrls(
   return urls;
 }
 
-// Re-encoding a GIF drops every frame after the first, and an animation the
-// user chose to attach is worth more than the bytes it saves. Exported because
-// the size cap has to know whether a file is one we can still shrink.
+// GIFs are excluded because re-encoding drops every frame after the first.
 export function isResizable(file: File): boolean {
   return file.type.startsWith("image/") && file.type !== "image/gif";
 }
@@ -167,9 +153,7 @@ export async function downscaleImage(file: File): Promise<File> {
     if (!context) return file;
     context.drawImage(bitmap, 0, 0, width, height);
 
-    // The type is preserved rather than normalised: a PNG re-encoded as JPEG
-    // loses its alpha channel, and screenshots of UI are mostly what gets
-    // pasted here.
+    // Type preserved, not normalised: a PNG re-encoded as JPEG loses its alpha.
     const blob = await canvas.convertToBlob({ type: file.type, quality: 0.92 });
     if (blob.type !== file.type || blob.size >= file.size) return file;
     return new File([blob], file.name, { type: file.type });
@@ -180,11 +164,8 @@ export async function downscaleImage(file: File): Promise<File> {
   }
 }
 
-// Three screenshots pasted in a row are three files called "image.png"; the
-// chips would be indistinguishable. The clock makes them tell each other apart
-// — but only to the second, and two pastes a moment apart are two separate
-// calls, so the counter carries across them and the stamp alone never has to
-// be unique.
+// Pasted screenshots are all called "image.png". The stamp is only accurate to
+// the second, so the counter is what actually keeps them apart.
 let lastStamp = "";
 let sequence = 0;
 

@@ -12,15 +12,10 @@ import {
   storageExtension,
 } from "@/lib/attachments/types";
 
-// Parsing a 200-page PDF is the slow part, not the transfer.
 export const maxDuration = 60;
 
 const MAX_FILENAME_LENGTH = 200;
 
-// The bytes come through this route rather than a signed direct-to-storage URL
-// because the server needs them anyway: a file has no token estimate until its
-// text has been extracted, and extraction cannot happen in the browser. Going
-// direct would mean uploading, then downloading the same bytes back to parse.
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) {
@@ -53,9 +48,8 @@ export async function POST(request: Request) {
     );
   }
 
-  // Classified before truncation: a name long enough to be cut loses its
-  // extension, and a .ts file with no extension left falls back to the MIME the
-  // browser reported — video/mp2t — and is rejected as video.
+  // Classified before truncation: a cut name loses its extension, and falls
+  // back to the MIME the browser reported.
   const untruncated = file.name.split(/[\\/]/).pop() || "attachment";
   const classification = classify(untruncated, file.type);
   const filename = untruncated.slice(0, MAX_FILENAME_LENGTH);
@@ -94,8 +88,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Past this line the object exists, so every failure has to take it back out
-  // — an object with no row is invisible to the app and never reclaimed.
+  // Past this line the object exists, so every failure has to take it back out.
   try {
     const extracted = await extractAttachment(bytes, kind);
     const { data: row, error: insertError } = await supabase
@@ -136,9 +129,7 @@ export async function POST(request: Request) {
   }
 }
 
-// Only a draft can be taken back. Once a card has sent a file, that file is
-// part of what the card is: node_attachments records the send, and no snapshot
-// of the payload exists to fall back on.
+// Only a draft can be taken back; a sent file is part of what the card is.
 export async function DELETE(request: Request) {
   const user = await currentUser();
   if (!user) {

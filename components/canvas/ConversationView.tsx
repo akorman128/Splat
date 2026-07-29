@@ -49,8 +49,6 @@ export function ConversationView({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [composerHidden, setComposerHidden] = useState(false);
 
-  // Only the floating composer can be hidden; the empty state is nothing but
-  // the composer, so hiding it there would leave a blank page.
   const toggleComposer = useCallback(() => {
     if (!hasNodes) return;
     setComposerHidden((hidden) => !hidden);
@@ -61,12 +59,9 @@ export function ConversationView({
   const [lastRegenerateId, setLastRegenerateId] = useState<string | null>(null);
   if (regenerateNodeId !== lastRegenerateId) {
     setLastRegenerateId(regenerateNodeId);
-    // A staged regeneration is edited in the composer — reveal it.
     if (regenerateNodeId) setComposerHidden(false);
   }
 
-  // A file dropped on the canvas lands in a composer that may be hidden, and a
-  // chip nobody can see reads as a drop that did nothing.
   const draftCount = useAttachmentStore((s) => s.drafts.length);
   const [lastDraftCount, setLastDraftCount] = useState(0);
   if (draftCount !== lastDraftCount) {

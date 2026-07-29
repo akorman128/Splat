@@ -44,8 +44,6 @@ export function useSubmitSuggestion() {
       const contextNodeIds = parentChain(parent.id, allNodes);
       const position = childPosition(parent, allNodes);
 
-      // A follow-up inherits the card's skills for the same reason it inherits
-      // its context: it continues that line of thinking.
       const { data: parentSkills } = await createClient()
         .from("node_skills")
         .select("skill_id")
@@ -65,10 +63,7 @@ export function useSubmitSuggestion() {
           parentId: parent.id,
           contextNodeIds,
           skillIds,
-          // A suggestion is a one-click follow-up with no composer in front of
-          // it. Skills carry down the branch because they shape how the model
-          // answers; files do not, because re-sending them is the cost this
-          // feature exists to avoid.
+          // Skills carry down the branch; files deliberately do not.
           attachmentIds: [],
           prompt: suggestion.text,
           provider,

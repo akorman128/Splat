@@ -36,9 +36,6 @@ export default async function ConversationPage({
     ]);
 
   const nodeIds = (nodes ?? []).map((n) => n.id);
-  // Named columns, not select("*"): a claimed attachment carries the whole
-  // extracted text of its file, which is megabytes on a long PDF and of no use
-  // whatsoever to the canvas.
   const [{ data: edges }, { data: suggestions }, { data: attachments }] =
     nodeIds.length
       ? await Promise.all([

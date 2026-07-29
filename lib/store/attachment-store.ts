@@ -20,10 +20,6 @@ import {
 } from "@/lib/attachments/types";
 import type { CardAttachment } from "@/lib/types";
 
-// A draft attachment — uploaded, extracted, but not yet claimed by a card. It
-// is deliberately not in the context picker: a chip in the composer *is* a
-// checked attachment, which is how "checked on the turn it is attached,
-// unchecked forever after" ends up needing no state at all.
 export type DraftAttachment = {
   localId: string;
   filename: string;
@@ -37,13 +33,7 @@ type AttachmentState = {
   drafts: DraftAttachment[];
   enqueue(files: File[], options?: { synthesiseNames?: boolean }): void;
   remove(localId: string): void;
-  // After a send: the rows named here now belong to a card, so the composer
-  // lets go of them. Anything not on the list — an upload that started while
-  // the card was streaming — stays, because dropping it here would leave the
-  // object in the bucket with no chip and no owner.
   released(sentAttachmentIds: string[]): void;
-  // On leaving a conversation: in-flight uploads are pointless, and whatever
-  // landed becomes an abandoned draft for the sweep to reclaim.
   reset(): void;
 };
 
@@ -60,10 +50,8 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
     const conversationId = useGraphStore.getState().conversationId;
     if (!conversationId || files.length === 0) return;
 
-    // A regeneration replays the card's own files and has no way to send new
-    // ones, so anything accepted here would upload and then strand. The
-    // composer hides its own controls; this catches the canvas drop, which
-    // does not go through them.
+    // The composer hides its own controls during a regeneration; this catches
+    // the canvas drop, which does not go through them.
     if (useComposerStore.getState().regenerateNodeId) {
       toast.error(
         "Finish or cancel the regeneration before attaching a file.",
@@ -89,9 +77,6 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
             })
           : original;
 
-      // The same call the route makes. Rejecting here saves a round trip and
-      // gives the reason instantly; the server repeats it because a check in
-      // the browser is a courtesy, not a gate.
       const classification = classify(named.name, named.type);
       if (!classification.ok) {
         toast.error(classification.message);
@@ -101,11 +86,8 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
         toast.error(`${named.name} is empty.`);
         continue;
       }
-      // The cap is only applied here to files nothing can shrink. A 12MP
-      // camera photo is over the 8MB image cap and lands well under 1MB once
-      // downscaled, so rejecting it before the downscaler has run would be
-      // refusing a file we were about to make acceptable; that check moves
-      // into start(), after the resize.
+      // Only files nothing can shrink are capped here; the rest are checked in
+      // start(), after the downscaler has run.
       const cap = SIZE_CAPS[classification.kind];
       if (!isResizable(named) && named.size > cap) {
         toast.error(`${named.name} is ${sizeCapMessage(named.size, cap)}`);
@@ -178,14 +160,12 @@ async function start(
   conversationId: string,
 ): Promise<void> {
   const prepared = await downscaleImage(file);
-  // A cancel that lands while the image is being resized has already dropped
-  // the row from the list; starting the request now would orphan an object.
+  // A cancel during the resize already dropped the row; uploading now would
+  // orphan the object.
   if (!useAttachmentStore.getState().drafts.some((d) => d.localId === id)) {
     return;
   }
 
-  // Still too big with the pixels already thrown away — an error on the chip
-  // rather than a toast, because by now the file is on screen.
   if (prepared.size > cap) {
     patch(id, {
       status: "error",

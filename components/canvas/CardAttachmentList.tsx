@@ -28,9 +28,6 @@ export function CardAttachmentList({
 }: {
   attachments: CardAttachment[];
 }) {
-  // A shared canvas is read by anonymous visitors, and the storage policies are
-  // `to authenticated` — there is no link to mint for them, so the files stay
-  // name-only pills.
   const readOnly = useGraphStore((s) => s.readOnly);
   const ids = attachments.map((a) => a.id);
 
@@ -38,8 +35,6 @@ export function CardAttachmentList({
     queryKey: queryKeys.attachmentUrls(ids),
     queryFn: () => fetchAttachmentUrls(ids),
     enabled: !readOnly && ids.length > 0,
-    // Going stale before the link expires means an overlay left open overnight
-    // still opens its files.
     staleTime: SIGNED_URL_TTL_SECONDS * 1000 * 0.75,
     retry: false,
   });
@@ -56,8 +51,8 @@ export function CardAttachmentList({
             className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
           >
             {attachment.kind === "image" && url ? (
-              // Signed one-hour URLs on a private bucket; next/image would want
-              // a remote pattern for a host that changes per project.
+              // next/image would want a remote pattern for a host that changes
+              // per project.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={url}
