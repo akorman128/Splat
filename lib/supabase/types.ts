@@ -157,7 +157,7 @@ export type Database = {
       }
       node_attachments: {
         Row: {
-          attachment_id: string
+          attachment_id: string | null
           filename: string
           id: string
           kind: string
@@ -166,7 +166,7 @@ export type Database = {
           position: number
         }
         Insert: {
-          attachment_id: string
+          attachment_id?: string | null
           filename: string
           id?: string
           kind: string
@@ -175,7 +175,7 @@ export type Database = {
           position: number
         }
         Update: {
-          attachment_id?: string
+          attachment_id?: string | null
           filename?: string
           id?: string
           kind?: string
