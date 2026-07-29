@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "types:dump": "supabase gen types typescript --project-id qybwksctqgbcmlfzolqd --schema public",
+    "types:dump": "if [ -f .env.local ]; then set -a; . ./.env.local; set +a; fi; : \"${SUPABASE_PROJECT_ID:?set SUPABASE_PROJECT_ID in .env.local}\"; supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public",
     "types:gen": "npm run --silent types:dump > lib/supabase/types.ts.tmp && mv lib/supabase/types.ts.tmp lib/supabase/types.ts || rm -f lib/supabase/types.ts.tmp",
     "types:check": "npm run --silent types:dump | diff -u lib/supabase/types.ts -"
   },

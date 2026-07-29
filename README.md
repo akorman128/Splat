@@ -38,13 +38,14 @@ npm install
 cp .env.example .env.local
 ```
 
-Fill in three required values in `.env.local`:
+Fill in four required values in `.env.local`:
 
 | Variable | Where it comes from |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase dashboard → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page — the publishable (anon) key |
 | `APP_ENCRYPTION_KEY` | Generate one: `openssl rand -base64 32` |
+| `SUPABASE_PROJECT_ID` | The project ref — the subdomain of the URL above |
 
 (`.env.example` also lists three optional vars: OpenRouter attribution headers
 and a tldraw license key to drop the canvas watermark. Skip them.)
