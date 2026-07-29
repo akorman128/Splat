@@ -55,27 +55,35 @@ function providerLabel(provider: Provider): string {
     : conversationModelLabel(provider);
 }
 
-// Drafts and ticked ancestor files reach the route as one list measured
-// against one cap. Counting them apart is how a send ends in a 400 with no
-// chip and no checkbox to point at, so the composer counts them together —
-// uploads still in flight included, because they will be ready by the time
-// Send is pressed, and ticks whose owning card is gone excluded, because they
-// have no row left to send.
-function turnAttachmentCount(
+// Ticks whose owning card is gone are excluded, because they have no row left
+// to send: deleting the card that owned a ticked file otherwise leaves its id
+// checked with no checkbox to untick, and the route answers every subsequent
+// send with a 400.
+function liveCheckedAttachmentIds(
   checkedAttachments: Record<string, boolean>,
-): number {
+): string[] {
   const live = new Set(
     Object.values(useGraphStore.getState().attachments).flatMap((list) =>
       list.map((a) => a.id),
     ),
   );
-  const ticked = Object.entries(checkedAttachments).filter(
-    ([id, value]) => value && live.has(id),
-  ).length;
+  return Object.entries(checkedAttachments)
+    .filter(([id, value]) => value && live.has(id))
+    .map(([id]) => id);
+}
+
+// Drafts and ticked ancestor files reach the route as one list measured
+// against one cap. Counting them apart is how a send ends in a 400 with no
+// chip and no checkbox to point at, so the composer counts them together —
+// uploads still in flight included, because they will be ready by the time
+// Send is pressed.
+function turnAttachmentCount(
+  checkedAttachments: Record<string, boolean>,
+): number {
   const drafts = useAttachmentStore
     .getState()
     .drafts.filter((d) => d.status !== "error").length;
-  return drafts + ticked;
+  return drafts + liveCheckedAttachmentIds(checkedAttachments).length;
 }
 
 export function Composer({
@@ -107,8 +115,12 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const drafts = useAttachmentStore((s) => s.drafts);
-  const uploading = drafts.some((d) => d.status === "uploading");
+  // A boolean, not the array: patch() replaces `drafts` on every progress tick
+  // of every upload, and subscribing to it re-renders the whole composer —
+  // context picker included — dozens of times per file.
+  const uploading = useAttachmentStore((s) =>
+    s.drafts.some((d) => d.status === "uploading"),
+  );
 
   const matches = useMemo(
     () =>
@@ -334,21 +346,9 @@ export function Composer({
     // Drafts are what this card is about to own; the checked ones are older
     // files being replayed. The route tells them apart by node_id, so they can
     // travel as one list.
-    //
-    // The checked set is filtered against what still exists for the same reason
-    // contextNodeIds is: deleting the card that owned a ticked file leaves its
-    // id checked with no row and no checkbox to untick, and the route answers
-    // every subsequent send with a 400.
-    const liveAttachmentIds = new Set(
-      Object.values(graph.attachments).flatMap((list) =>
-        list.map((a) => a.id),
-      ),
-    );
     const attachmentIds = [
       ...readyAttachmentIds(useAttachmentStore.getState().drafts),
-      ...Object.entries(checkedAttachments)
-        .filter(([id, value]) => value && liveAttachmentIds.has(id))
-        .map(([id]) => id),
+      ...liveCheckedAttachmentIds(checkedAttachments),
     ];
     // The route counts the same list and answers 400, which arrives as a
     // failed send with the prompt handed back and nothing to act on.
@@ -422,11 +422,7 @@ export function Composer({
   // an answer being rewritten in place.
   const attachable = !regenerateNodeId;
 
-  // No `attachable` guard: enqueue already refuses a file mid-regeneration and
-  // says why, which is better than a drop that lands nowhere and explains
-  // nothing.
   function pick(files: File[], synthesiseNames = false) {
-    if (files.length === 0) return;
     useAttachmentStore.getState().enqueue(files, { synthesiseNames });
   }
 

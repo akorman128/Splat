@@ -2,6 +2,7 @@
 
 import { Loader2, X } from "lucide-react";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
+import { missingTextNotice } from "@/lib/attachments/types";
 import { useAttachmentStore, type DraftAttachment } from "@/lib/store/attachment-store";
 import { formatTokens } from "@/lib/tokens";
 import { cn } from "@/lib/utils";
@@ -21,25 +22,12 @@ function detailOf(draft: DraftAttachment): Detail {
     return { text: "failed", title: message, warn: true };
   }
 
-  const { extract_status, extract_error, est_tokens, truncated } =
-    draft.attachment;
-  if (extract_status === "failed") {
-    return {
-      text: "unreadable",
-      title:
-        extract_error ??
-        "The text of this file could not be read; it will not be sent.",
-      warn: true,
-    };
+  const notice = missingTextNotice(draft.attachment);
+  if (notice) {
+    return { text: notice.short, title: notice.title, warn: true };
   }
-  if (extract_status === "empty") {
-    return {
-      text: "no text",
-      title:
-        "This file parsed cleanly but holds no text — a scan, most likely. The model will not be able to read it.",
-      warn: true,
-    };
-  }
+
+  const { est_tokens, truncated } = draft.attachment;
   return {
     text: `~${formatTokens(est_tokens)} tok${truncated ? " · cut" : ""}`,
     title: truncated

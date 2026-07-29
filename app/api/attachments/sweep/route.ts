@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { currentUser } from "@/lib/supabase/dal";
+import { selectAllPages } from "@/lib/supabase/pagination";
 import { ATTACHMENTS_BUCKET } from "@/lib/attachments/types";
 
 // Reclaims what the happy path cannot: composers abandoned before send, and
@@ -74,32 +75,24 @@ export async function POST(request: Request) {
     .from(ATTACHMENTS_BUCKET)
     .list(user.id, { limit: 1000 });
 
-  // Every row, paged, before anything is deleted. PostgREST caps a select at
-  // db-max-rows — 1000 by default — and a short read here is not a smaller
-  // sweep but a wrong one: a conversation missing from the answer looks
-  // deleted, so the objects behind its live rows are removed while the rows
-  // stay, and every pill on that canvas becomes a broken link with no way
-  // back. The loop stops on an empty page rather than a short one, because
-  // the server's cap is what it is and may be lower than the page asked for.
-  const PAGE = 1000;
-  const rows: { storage_path: string; conversation_id: string }[] = [];
-  for (let from = 0; ; ) {
-    const { data, error } = await supabase
+  // Every row, paged, before anything is deleted: a conversation missing from
+  // the answer looks deleted, so the objects behind its live rows are removed
+  // while the rows stay, and every pill on that canvas becomes a broken link
+  // with no way back.
+  const { rows, error: rowsError } = await selectAllPages((from, to) =>
+    supabase
       .from("attachments")
       .select("storage_path, conversation_id")
       .order("storage_path")
-      .range(from, from + PAGE - 1);
-    // A read that failed is indistinguishable from a table with nothing in
-    // it, and one of those two answers deletes everything the user owns.
-    if (error) {
-      return NextResponse.json(
-        { error: "Could not read the attachment list." },
-        { status: 500 },
-      );
-    }
-    if (!data || data.length === 0) break;
-    rows.push(...data);
-    from += data.length;
+      .range(from, to),
+  );
+  // A read that failed is indistinguishable from a table with nothing in it,
+  // and one of those two answers deletes everything the user owns.
+  if (rowsError) {
+    return NextResponse.json(
+      { error: "Could not read the attachment list." },
+      { status: 500 },
+    );
   }
 
   const known = new Set(rows.map((row) => row.storage_path));
@@ -116,28 +109,34 @@ export async function POST(request: Request) {
     (name) => !liveConversations.has(name) || name === conversationId,
   );
 
-  for (const folder of sweepable) {
-    const prefix = `${user.id}/${folder}`;
-    const { data: objects } = await supabase.storage
-      .from(ATTACHMENTS_BUCKET)
-      .list(prefix, { limit: 1000 });
-    const stale = (objects ?? [])
-      .filter((object) => {
-        // An upload in flight has no row yet; only objects old enough to have
-        // finished either way are candidates.
-        const createdAt = object.created_at
-          ? Date.parse(object.created_at)
-          : now;
-        return (
-          now - createdAt > ORPHAN_MIN_AGE_MS &&
-          !known.has(`${prefix}/${object.name}`)
-        );
-      })
-      .map((object) => `${prefix}/${object.name}`);
-    if (stale.length > 0) {
-      await supabase.storage.from(ATTACHMENTS_BUCKET).remove(stale);
-      orphans += stale.length;
-    }
+  // The folders have nothing to say to each other, and remove() takes paths
+  // across prefixes, so this is two round trips rather than two per folder.
+  const listings = await Promise.all(
+    sweepable.map(async (folder) => {
+      const prefix = `${user.id}/${folder}`;
+      const { data: objects } = await supabase.storage
+        .from(ATTACHMENTS_BUCKET)
+        .list(prefix, { limit: 1000 });
+      return (objects ?? [])
+        .filter((object) => {
+          // An upload in flight has no row yet; only objects old enough to
+          // have finished either way are candidates.
+          const createdAt = object.created_at
+            ? Date.parse(object.created_at)
+            : now;
+          return (
+            now - createdAt > ORPHAN_MIN_AGE_MS &&
+            !known.has(`${prefix}/${object.name}`)
+          );
+        })
+        .map((object) => `${prefix}/${object.name}`);
+    }),
+  );
+
+  const stale = listings.flat();
+  if (stale.length > 0) {
+    await supabase.storage.from(ATTACHMENTS_BUCKET).remove(stale);
+    orphans = stale.length;
   }
 
   return NextResponse.json({ drafts, orphans });

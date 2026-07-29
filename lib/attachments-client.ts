@@ -2,6 +2,7 @@
 
 import { apiFetch, postJson } from "@/lib/query/api";
 import { createClient } from "@/lib/supabase/client";
+import { selectAllPages } from "@/lib/supabase/pagination";
 import { ATTACHMENTS_BUCKET } from "@/lib/attachments/types";
 import type { CardAttachment } from "@/lib/types";
 
@@ -78,38 +79,24 @@ export async function deleteAttachment(id: string): Promise<void> {
 // this has to run first; removing the objects does not, and must not, because
 // a delete that then fails would leave a card whose pills point at files that
 // are no longer there. Paths first, delete, then removeAttachmentObjects.
-//
-// Paged for the same reason the sweep is: PostgREST caps a select at
-// db-max-rows, and the rows past the cap are objects nobody will ever have the
-// path to again.
 export async function attachmentObjectPaths(
   scope: { nodeIds: string[] } | { conversationId: string },
 ): Promise<string[]> {
   const supabase = createClient();
-  const PAGE = 1000;
-  const paths: string[] = [];
-  for (let from = 0; ; ) {
+  const { rows, error } = await selectAllPages((from, to) => {
     const query = supabase
       .from("attachments")
       .select("storage_path")
       .order("storage_path")
-      .range(from, from + PAGE - 1);
-    const { data, error } =
-      "nodeIds" in scope
-        ? await query.in("node_id", scope.nodeIds)
-        : await query.eq("conversation_id", scope.conversationId);
-    if (error) {
-      console.warn(
-        "Could not list attachment objects to remove:",
-        error.message,
-      );
-      return paths;
-    }
-    if (!data || data.length === 0) break;
-    paths.push(...data.map((row) => row.storage_path));
-    from += data.length;
+      .range(from, to);
+    return "nodeIds" in scope
+      ? query.in("node_id", scope.nodeIds)
+      : query.eq("conversation_id", scope.conversationId);
+  });
+  if (error) {
+    console.warn("Could not list attachment objects to remove:", error.message);
   }
-  return paths;
+  return rows.map((row) => row.storage_path);
 }
 
 // A failure here is logged rather than thrown — losing a delete because storage

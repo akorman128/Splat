@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
+import { missingTextNotice } from "@/lib/attachments/types";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { ancestorsOf } from "@/lib/graph/ancestors";
 import { topoOrder } from "@/lib/graph/topo-order";
@@ -102,17 +103,11 @@ function AttachmentRow({
   checked: boolean;
   onToggle: (attachmentId: string, value: boolean) => void;
 }) {
-  const unreadable =
-    attachment.extract_status === "failed" ||
-    attachment.extract_status === "empty";
+  const notice = missingTextNotice(attachment);
 
   return (
     <label
-      title={
-        unreadable
-          ? "No text could be read from this file — sending it tells the model its name and nothing more."
-          : `Send ${attachment.filename} again with this prompt`
-      }
+      title={notice?.title ?? `Send ${attachment.filename} again with this prompt`}
       className="flex cursor-pointer items-center gap-2 rounded py-0.5 pr-1 pl-6 text-xs hover:bg-accent/60"
     >
       <Checkbox
@@ -130,7 +125,7 @@ function AttachmentRow({
         )}
       </span>
       <span className="shrink-0 tabular-nums text-muted-foreground">
-        {unreadable ? "no text" : `~${formatTokens(attachment.est_tokens)} tok`}
+        {notice?.short ?? `~${formatTokens(attachment.est_tokens)} tok`}
       </span>
     </label>
   );

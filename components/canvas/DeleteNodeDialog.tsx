@@ -26,12 +26,6 @@ export function DeleteNodeDialog() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (ids: string[]) => {
-      // The paths have to be read before the rows go — attachments cascade off
-      // nodes, and once the row is gone so is the only copy of its storage
-      // path. The objects themselves go afterwards: a delete that fails here
-      // would otherwise leave the cards on the canvas with pills pointing at
-      // files that no longer exist, which nothing on screen can recover from.
-      // The other order round leaks objects, and the sweep reclaims those.
       const paths = await attachmentObjectPaths({ nodeIds: ids });
       const { error } = await createClient().from("nodes").delete().in("id", ids);
       if (error) throw new Error(error.message);

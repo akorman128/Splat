@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { currentUser } from "@/lib/supabase/dal";
-import { ATTACHMENTS_BUCKET } from "@/lib/attachments/types";
+import {
+  ATTACHMENTS_BUCKET,
+  SIGNED_URL_TTL_SECONDS,
+} from "@/lib/attachments/types";
 
 // Signed URLs are minted here rather than in the browser so that storage_path
 // never has to ride along in the canvas payload. RLS on `attachments` is what
 // decides whose files these are; this route only turns ids into links.
-export const SIGNED_URL_TTL_SECONDS = 3600;
 
 export async function POST(request: Request) {
   const user = await currentUser();

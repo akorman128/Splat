@@ -8,7 +8,7 @@ import {
   CARD_ATTACHMENT_COLUMNS,
   SIZE_CAPS,
   classify,
-  formatBytes,
+  sizeCapMessage,
   storageExtension,
 } from "@/lib/attachments/types";
 
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   if (file.size > cap) {
     return NextResponse.json(
       {
-        error: `${filename} is ${formatBytes(file.size)} — the limit for this kind of file is ${formatBytes(cap)}.`,
+        error: `${filename} is ${sizeCapMessage(file.size, cap)}`,
       },
       { status: 413 },
     );

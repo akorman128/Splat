@@ -59,6 +59,11 @@ export const EMPTY_TEXT_THRESHOLD = 20;
 
 export const MAX_ATTACHMENTS_PER_TURN = 20;
 
+// How long a link minted by /api/attachments/urls stays good. The query that
+// caches those links derives its staleTime from this, so a shorter lifetime
+// here cannot leave a cache serving URLs that have already expired.
+export const SIGNED_URL_TTL_SECONDS = 3600;
+
 // Images are the expensive half: they ride inline as base64, so a request that
 // gathers too many is a request the provider will reject after we have already
 // paid to download and encode them.
@@ -229,4 +234,36 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// The browser says this before the upload and the route says it after; they
+// have to agree, because the second one arrives as a 413 contradicting the
+// first.
+export function sizeCapMessage(size: number, cap: number): string {
+  return `${formatBytes(size)} — the limit for this kind of file is ${formatBytes(cap)}.`;
+}
+
+// Null when the file's text came out fine. Every surface that draws an
+// attachment has to answer "is there text behind this?" and they answered it
+// three different ways, in three different words, for the same two statuses.
+export function missingTextNotice(attachment: {
+  extract_status: string;
+  extract_error?: string | null;
+}): { short: string; title: string } | null {
+  if (attachment.extract_status === "failed") {
+    return {
+      short: "unreadable",
+      title:
+        attachment.extract_error ??
+        "The text of this file could not be read; it will not be sent.",
+    };
+  }
+  if (attachment.extract_status === "empty") {
+    return {
+      short: "no text",
+      title:
+        "This file parsed cleanly but holds no text — a scan, most likely. The model will not be able to read it.",
+    };
+  }
+  return null;
 }

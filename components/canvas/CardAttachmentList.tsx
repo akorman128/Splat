@@ -4,18 +4,23 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
 import { fetchAttachmentUrls } from "@/lib/attachments-client";
-import { formatBytes } from "@/lib/attachments/types";
+import {
+  SIGNED_URL_TTL_SECONDS,
+  formatBytes,
+  missingTextNotice,
+} from "@/lib/attachments/types";
 import { queryKeys } from "@/lib/query/keys";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { formatTokens } from "@/lib/tokens";
 import type { CardAttachment } from "@/lib/types";
 
 function describe(attachment: CardAttachment): string {
-  if (attachment.extract_status === "failed") return "couldn’t be read";
-  if (attachment.extract_status === "empty") return "no text found";
-  return `${formatBytes(attachment.byte_size)} · ~${formatTokens(attachment.est_tokens)} tok${
-    attachment.truncated ? " · truncated" : ""
-  }`;
+  return (
+    missingTextNotice(attachment)?.short ??
+    `${formatBytes(attachment.byte_size)} · ~${formatTokens(attachment.est_tokens)} tok${
+      attachment.truncated ? " · truncated" : ""
+    }`
+  );
 }
 
 export function CardAttachmentList({
@@ -33,9 +38,9 @@ export function CardAttachmentList({
     queryKey: queryKeys.attachmentUrls(ids),
     queryFn: () => fetchAttachmentUrls(ids),
     enabled: !readOnly && ids.length > 0,
-    // The links expire in an hour; going stale before then means an overlay
-    // left open overnight still opens its files.
-    staleTime: 45 * 60 * 1000,
+    // Going stale before the link expires means an overlay left open overnight
+    // still opens its files.
+    staleTime: SIGNED_URL_TTL_SECONDS * 1000 * 0.75,
     retry: false,
   });
 

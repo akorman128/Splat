@@ -16,7 +16,7 @@ import {
   MAX_ATTACHMENTS_PER_TURN,
   SIZE_CAPS,
   classify,
-  formatBytes,
+  sizeCapMessage,
 } from "@/lib/attachments/types";
 import type { CardAttachment } from "@/lib/types";
 
@@ -27,7 +27,6 @@ import type { CardAttachment } from "@/lib/types";
 export type DraftAttachment = {
   localId: string;
   filename: string;
-  byteSize: number;
   status: "uploading" | "ready" | "error";
   progress: number;
   error: string | null;
@@ -109,9 +108,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
       // into start(), after the resize.
       const cap = SIZE_CAPS[classification.kind];
       if (!isResizable(named) && named.size > cap) {
-        toast.error(
-          `${named.name} is ${formatBytes(named.size)} — the limit for this kind of file is ${formatBytes(cap)}.`,
-        );
+        toast.error(`${named.name} is ${sizeCapMessage(named.size, cap)}`);
         continue;
       }
 
@@ -122,7 +119,6 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
           {
             localId: id,
             filename: named.name,
-            byteSize: named.size,
             status: "uploading",
             progress: 0,
             error: null,
@@ -131,7 +127,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
         ],
       }));
 
-      void start(id, named, cap, conversationId, set);
+      void start(id, named, cap, conversationId);
     }
   },
 
@@ -167,16 +163,8 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
   },
 }));
 
-type Setter = (
-  updater: (state: AttachmentState) => Partial<AttachmentState>,
-) => void;
-
-function patch(
-  set: Setter,
-  id: string,
-  fields: Partial<DraftAttachment>,
-): void {
-  set((state) => ({
+function patch(id: string, fields: Partial<DraftAttachment>): void {
+  useAttachmentStore.setState((state) => ({
     drafts: state.drafts.map((d) =>
       d.localId === id ? { ...d, ...fields } : d,
     ),
@@ -188,7 +176,6 @@ async function start(
   file: File,
   cap: number,
   conversationId: string,
-  set: Setter,
 ): Promise<void> {
   const prepared = await downscaleImage(file);
   // A cancel that lands while the image is being resized has already dropped
@@ -196,14 +183,13 @@ async function start(
   if (!useAttachmentStore.getState().drafts.some((d) => d.localId === id)) {
     return;
   }
-  patch(set, id, { byteSize: prepared.size });
 
   // Still too big with the pixels already thrown away — an error on the chip
   // rather than a toast, because by now the file is on screen.
   if (prepared.size > cap) {
-    patch(set, id, {
+    patch(id, {
       status: "error",
-      error: `${formatBytes(prepared.size)} — the limit for this kind of file is ${formatBytes(cap)}.`,
+      error: sizeCapMessage(prepared.size, cap),
     });
     return;
   }
@@ -211,16 +197,16 @@ async function start(
   const upload = uploadAttachment({
     file: prepared,
     conversationId,
-    onProgress: (progress) => patch(set, id, { progress }),
+    onProgress: (progress) => patch(id, { progress }),
   });
   aborts.set(id, upload.abort);
 
   try {
     const attachment = await upload.promise;
-    patch(set, id, { status: "ready", progress: 1, attachment });
+    patch(id, { status: "ready", progress: 1, attachment });
   } catch (err) {
     if (err instanceof UploadAbortedError) return;
-    patch(set, id, {
+    patch(id, {
       status: "error",
       error: err instanceof Error ? err.message : "Upload failed",
     });

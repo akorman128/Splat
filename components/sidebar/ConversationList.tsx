@@ -111,11 +111,6 @@ export function AppSidebar({
     if (!pendingDelete) return;
     setDeleting(true);
     const supabase = createClient();
-    // Paths first — the cascade takes every attachment row with the
-    // conversation, and with them the only record of what to delete. The
-    // objects go once the conversation is actually gone, so a failed delete
-    // leaves a conversation whose files still open rather than one full of
-    // dead links.
     const paths = await attachmentObjectPaths({
       conversationId: pendingDelete.id,
     });
