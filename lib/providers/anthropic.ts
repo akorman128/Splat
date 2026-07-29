@@ -19,18 +19,30 @@ function toAnthropic(messages: ChatMessage[]): Anthropic.MessageParam[] {
     }
     return {
       role: "user",
-      content: message.content.map((part) =>
-        part.type === "text"
-          ? { type: "text" as const, text: part.text }
-          : {
-              type: "image" as const,
-              source: {
-                type: "base64" as const,
-                media_type: part.mediaType,
-                data: part.data,
-              },
+      content: message.content.map((part) => {
+        if (part.type === "text") {
+          return { type: "text" as const, text: part.text };
+        }
+        if (part.type === "document") {
+          return {
+            type: "document" as const,
+            source: {
+              type: "base64" as const,
+              media_type: "application/pdf" as const,
+              data: part.data,
             },
-      ),
+            title: part.filename,
+          };
+        }
+        return {
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: part.mediaType,
+            data: part.data,
+          },
+        };
+      }),
     };
   });
 }

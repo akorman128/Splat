@@ -22,7 +22,7 @@ import {
 import {
   TURN_ATTACHMENT_COLUMNS,
   assembleMessages,
-  loadImageParts,
+  loadInlineParts,
   type TurnAttachment,
 } from "@/lib/attachments/content";
 import {
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
   // Both resolved before anything is written: a storage failure has to be a
   // clean JSON error, not a card left mid-stream.
   let turnAttachments: TurnAttachment[] = [];
-  let images: Map<string, ContentPart> = new Map();
+  let inline: Map<string, ContentPart> = new Map();
   let claimedAttachments: CardAttachment[] = [];
 
   const rerunNodeId = body.retryNodeId ?? body.regenerateNodeId;
@@ -265,14 +265,14 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     }
-    const rerunImages = await loadImageParts(supabase, turnAttachments);
-    if (!rerunImages.ok) {
+    const rerunInline = await loadInlineParts(supabase, turnAttachments);
+    if (!rerunInline.ok) {
       return NextResponse.json(
-        { error: rerunImages.error },
-        { status: rerunImages.status },
+        { error: rerunInline.error },
+        { status: rerunInline.status },
       );
     }
-    images = rerunImages.images;
+    inline = rerunInline.inline;
 
     const { data: reset, error: resetError } = await supabase
       .from("nodes")
@@ -472,14 +472,14 @@ export async function POST(request: Request) {
 
       // Before any write: nothing is claimed yet, and there is no node to roll
       // back.
-      const load = await loadImageParts(supabase, turnAttachments);
+      const load = await loadInlineParts(supabase, turnAttachments);
       if (!load.ok) {
         return NextResponse.json(
           { error: load.error },
           { status: load.status },
         );
       }
-      images = load.images;
+      inline = load.inline;
     }
 
     // Created only now, after every validation above has passed, so a
@@ -632,7 +632,7 @@ export async function POST(request: Request) {
     nodesById,
     node,
     attachments: turnAttachments,
-    images,
+    inline,
   });
 
   const system = skillSystemPrompt(attachedSkills);

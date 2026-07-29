@@ -50,7 +50,11 @@ export const MAX_ATTACHMENTS_PER_TURN = 20;
 export const SIGNED_URL_TTL_SECONDS = 3600;
 
 export const MAX_IMAGES_PER_REQUEST = 20;
-export const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+// Images and whole PDFs share one budget because they share one request body.
+// Base64 costs a third more than the bytes it encodes, so 20 MB of attachments
+// arrives as ~27 MB — inside the 32 MB request Anthropic accepts, with room for
+// the prompt.
+export const MAX_INLINE_BYTES = 20 * 1024 * 1024;
 
 const IMAGE_EXTENSIONS: Record<string, ImageMimeType> = {
   png: "image/png",
@@ -212,8 +216,18 @@ export function sizeCapMessage(size: number, cap: number): string {
   return `${formatBytes(size)} — the limit for this kind of file is ${formatBytes(cap)}.`;
 }
 
-// Null when the file's text came out fine.
+// A textless PDF is sent whole for the model to read, so it has nothing to
+// report. Every other file with no text does.
+export function sentAsPages(attachment: {
+  kind: string;
+  extract_status: string;
+}): boolean {
+  return attachment.kind === "pdf" && attachment.extract_status === "empty";
+}
+
+// Null when the file's contents will reach the model one way or another.
 export function missingTextNotice(attachment: {
+  kind: string;
   extract_status: string;
   extract_error?: string | null;
 }): { short: string; title: string } | null {
@@ -225,7 +239,7 @@ export function missingTextNotice(attachment: {
         "The text of this file could not be read; it will not be sent.",
     };
   }
-  if (attachment.extract_status === "empty") {
+  if (attachment.extract_status === "empty" && !sentAsPages(attachment)) {
     return {
       short: "no text",
       title:

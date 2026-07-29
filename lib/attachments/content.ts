@@ -4,9 +4,10 @@ import type { ChatMessage, ContentPart } from "@/lib/providers/types";
 import {
   ATTACHMENTS_BUCKET,
   MAX_IMAGES_PER_REQUEST,
-  MAX_INLINE_IMAGE_BYTES,
+  MAX_INLINE_BYTES,
   formatBytes,
   isImageMimeType,
+  sentAsPages,
 } from "./types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -28,10 +29,13 @@ export type TurnAttachment = {
   // the composer showed before sending.
   image_width: number | null;
   image_height: number | null;
+  // What a PDF sent whole costs, priced by the page at upload — there is nothing
+  // to derive it from at send time.
+  est_tokens: number;
 };
 
 export const TURN_ATTACHMENT_COLUMNS =
-  "id, node_id, conversation_id, filename, mime_type, kind, storage_path, extracted_text, extract_status, truncated, image_width, image_height";
+  "id, node_id, conversation_id, filename, mime_type, kind, storage_path, extracted_text, extract_status, truncated, image_width, image_height, est_tokens";
 
 function escapeAttribute(value: string): string {
   return value
@@ -41,8 +45,12 @@ function escapeAttribute(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
+function attributesOf(attachment: TurnAttachment): string {
+  return `name="${escapeAttribute(attachment.filename)}" type="${attachment.mime_type}"`;
+}
+
 function describe(attachment: TurnAttachment): string {
-  const attributes = `name="${escapeAttribute(attachment.filename)}" type="${attachment.mime_type}"`;
+  const attributes = attributesOf(attachment);
   if (attachment.extract_status === "ok" && attachment.extracted_text) {
     return `<attachment ${attributes}${attachment.truncated ? ' truncated="true"' : ""}>\n${attachment.extracted_text}\n</attachment>`;
   }
@@ -58,19 +66,19 @@ function describe(attachment: TurnAttachment): string {
 function contentFor(
   prompt: string,
   attachments: TurnAttachment[],
-  images: Map<string, ContentPart>,
+  inline: Map<string, ContentPart>,
 ): string | ContentPart[] {
   if (attachments.length === 0) return prompt;
 
   const parts: ContentPart[] = [];
   for (const attachment of attachments) {
-    const image = images.get(attachment.id);
-    if (image) {
+    const part = inline.get(attachment.id);
+    if (part) {
       parts.push({
         type: "text",
-        text: `<attachment name="${escapeAttribute(attachment.filename)}" type="${attachment.mime_type}" />`,
+        text: `<attachment ${attributesOf(attachment)} />`,
       });
-      parts.push(image);
+      parts.push(part);
       continue;
     }
     parts.push({ type: "text", text: describe(attachment) });
@@ -86,13 +94,13 @@ export function assembleMessages({
   nodesById,
   node,
   attachments,
-  images,
+  inline,
 }: {
   contextIds: string[];
   nodesById: Map<string, { id: string; prompt: string; response: string }>;
   node: { id: string; prompt: string };
   attachments: TurnAttachment[];
-  images: Map<string, ContentPart>;
+  inline: Map<string, ContentPart>;
 }): ChatMessage[] {
   const inContext = new Set(contextIds);
   const placed = new Map<string, TurnAttachment[]>();
@@ -111,7 +119,7 @@ export function assembleMessages({
     if (!contextNode) continue;
     messages.push({
       role: "user",
-      content: contentFor(contextNode.prompt, placed.get(id) ?? [], images),
+      content: contentFor(contextNode.prompt, placed.get(id) ?? [], inline),
     });
     if (contextNode.response) {
       messages.push({ role: "assistant", content: contextNode.response });
@@ -119,24 +127,33 @@ export function assembleMessages({
   }
   messages.push({
     role: "user",
-    content: contentFor(node.prompt, placed.get(node.id) ?? [], images),
+    content: contentFor(node.prompt, placed.get(node.id) ?? [], inline),
   });
   return messages;
 }
 
-export type ImageLoad =
-  | { ok: true; images: Map<string, ContentPart> }
+export type InlineLoad =
+  | { ok: true; inline: Map<string, ContentPart> }
   | { ok: false; status: number; error: string };
+
+// The files that travel as their own bytes rather than as extracted text.
+function sentWhole(attachments: TurnAttachment[]): TurnAttachment[] {
+  return attachments.filter(
+    (a) =>
+      (a.kind === "image" && isImageMimeType(a.mime_type)) || sentAsPages(a),
+  );
+}
 
 // Downloaded before the response stream is constructed, so a storage failure
 // is a clean JSON 5xx rather than a stream that opens and then dies.
-export async function loadImageParts(
+export async function loadInlineParts(
   supabase: SupabaseServerClient,
   attachments: TurnAttachment[],
-): Promise<ImageLoad> {
-  const images = attachments.filter((a) => a.kind === "image");
-  if (images.length === 0) return { ok: true, images: new Map() };
-  if (images.length > MAX_IMAGES_PER_REQUEST) {
+): Promise<InlineLoad> {
+  const whole = sentWhole(attachments);
+  if (whole.length === 0) return { ok: true, inline: new Map() };
+  const images = whole.filter((a) => a.kind === "image").length;
+  if (images > MAX_IMAGES_PER_REQUEST) {
     return {
       ok: false,
       status: 413,
@@ -146,34 +163,44 @@ export async function loadImageParts(
 
   const parts = new Map<string, ContentPart>();
   let total = 0;
-  for (const image of images) {
-    if (!isImageMimeType(image.mime_type)) continue;
+  for (const attachment of whole) {
     const { data, error } = await supabase.storage
       .from(ATTACHMENTS_BUCKET)
-      .download(image.storage_path);
+      .download(attachment.storage_path);
     if (error || !data) {
       return {
         ok: false,
         status: 502,
-        error: `Could not read ${image.filename} back from storage.`,
+        error: `Could not read ${attachment.filename} back from storage.`,
       };
     }
     const bytes = Buffer.from(await data.arrayBuffer());
     total += bytes.byteLength;
-    if (total > MAX_INLINE_IMAGE_BYTES) {
+    if (total > MAX_INLINE_BYTES) {
       return {
         ok: false,
         status: 413,
-        error: `Those images come to more than ${formatBytes(MAX_INLINE_IMAGE_BYTES)} together — send fewer at once.`,
+        error: `Those files come to more than ${formatBytes(MAX_INLINE_BYTES)} together — send fewer at once.`,
       };
     }
-    parts.set(image.id, {
-      type: "image",
-      mediaType: image.mime_type,
-      data: bytes.toString("base64"),
-      width: image.image_width,
-      height: image.image_height,
-    });
+    // Re-narrowed rather than cast: sentWhole already checked the MIME, but the
+    // filter cannot carry that down to here.
+    if (isImageMimeType(attachment.mime_type)) {
+      parts.set(attachment.id, {
+        type: "image",
+        mediaType: attachment.mime_type,
+        data: bytes.toString("base64"),
+        width: attachment.image_width,
+        height: attachment.image_height,
+      });
+    } else {
+      parts.set(attachment.id, {
+        type: "document",
+        data: bytes.toString("base64"),
+        filename: attachment.filename,
+        estTokens: attachment.est_tokens,
+      });
+    }
   }
-  return { ok: true, images: parts };
+  return { ok: true, inline: parts };
 }
