@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "🫟 Splat — graph-native AI chat",
+  title: "Splat — graph-native AI chat",
   description:
     "Every prompt is a card on an infinite canvas. You choose exactly what context each new prompt sees.",
 };
