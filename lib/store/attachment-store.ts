@@ -82,10 +82,10 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
       toast.error(`Only the first ${room} of those files were attached.`);
     }
 
-    for (const [index, original] of accepted.entries()) {
+    for (const original of accepted) {
       const named =
         options?.synthesiseNames || !original.name
-          ? new File([original], nameForPastedFile(original, index), {
+          ? new File([original], nameForPastedFile(original), {
               type: original.type,
             })
           : original;
@@ -158,7 +158,6 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
         (d) => !(d.attachment && sent.has(d.attachment.id)),
       ),
     }));
-    for (const id of sentAttachmentIds) aborts.delete(id);
   },
 
   reset() {

@@ -73,34 +73,57 @@ export async function deleteAttachment(id: string): Promise<void> {
   });
 }
 
-// Objects first, rows second: the row is the only record of where the object
-// lives, and deleting a card or a conversation cascades the rows away. A
-// failure here is logged rather than thrown — losing a delete because storage
+// Where a card's — or a conversation's — objects live, read before the rows go.
+// The row is the only record of the path and the delete cascades it away, so
+// this has to run first; removing the objects does not, and must not, because
+// a delete that then fails would leave a card whose pills point at files that
+// are no longer there. Paths first, delete, then removeAttachmentObjects.
+//
+// Paged for the same reason the sweep is: PostgREST caps a select at
+// db-max-rows, and the rows past the cap are objects nobody will ever have the
+// path to again.
+export async function attachmentObjectPaths(
+  scope: { nodeIds: string[] } | { conversationId: string },
+): Promise<string[]> {
+  const supabase = createClient();
+  const PAGE = 1000;
+  const paths: string[] = [];
+  for (let from = 0; ; ) {
+    const query = supabase
+      .from("attachments")
+      .select("storage_path")
+      .order("storage_path")
+      .range(from, from + PAGE - 1);
+    const { data, error } =
+      "nodeIds" in scope
+        ? await query.in("node_id", scope.nodeIds)
+        : await query.eq("conversation_id", scope.conversationId);
+    if (error) {
+      console.warn(
+        "Could not list attachment objects to remove:",
+        error.message,
+      );
+      return paths;
+    }
+    if (!data || data.length === 0) break;
+    paths.push(...data.map((row) => row.storage_path));
+    from += data.length;
+  }
+  return paths;
+}
+
+// A failure here is logged rather than thrown — losing a delete because storage
 // hiccuped would be worse than the leak. This is the fast path, not the
 // guarantee: /api/attachments/sweep reclaims a whole conversation folder that
-// has no rows left, which is what a delete that got this far and no further
-// looks like.
-export async function purgeAttachmentObjects(
-  scope: { nodeIds: string[] } | { conversationId: string },
-): Promise<void> {
-  const supabase = createClient();
-  const query = supabase.from("attachments").select("storage_path");
-  const { data, error } =
-    "nodeIds" in scope
-      ? await query.in("node_id", scope.nodeIds)
-      : await query.eq("conversation_id", scope.conversationId);
-  if (error) {
-    console.warn("Could not list attachment objects to remove:", error.message);
-    return;
-  }
-
-  const paths = (data ?? []).map((row) => row.storage_path);
+// has no rows left, which is exactly what a delete that got this far and no
+// further looks like.
+export async function removeAttachmentObjects(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
-  const { error: removeError } = await supabase.storage
-    .from(ATTACHMENTS_BUCKET)
+  const { error } = await createClient()
+    .storage.from(ATTACHMENTS_BUCKET)
     .remove(paths);
-  if (removeError) {
-    console.warn("Could not remove attachment objects:", removeError.message);
+  if (error) {
+    console.warn("Could not remove attachment objects:", error.message);
   }
 }
 
@@ -171,12 +194,21 @@ export async function downscaleImage(file: File): Promise<File> {
 }
 
 // Three screenshots pasted in a row are three files called "image.png"; the
-// chips would be indistinguishable. The clock makes them tell each other apart.
-export function nameForPastedFile(file: File, index: number): string {
-  const stamp = new Date()
-    .toTimeString()
-    .slice(0, 8)
-    .replaceAll(":", "");
+// chips would be indistinguishable. The clock makes them tell each other apart
+// — but only to the second, and two pastes a moment apart are two separate
+// calls, so the counter carries across them and the stamp alone never has to
+// be unique.
+let lastStamp = "";
+let sequence = 0;
+
+export function nameForPastedFile(file: File): string {
+  const stamp = new Date().toTimeString().slice(0, 8).replaceAll(":", "");
+  if (stamp === lastStamp) {
+    sequence += 1;
+  } else {
+    lastStamp = stamp;
+    sequence = 0;
+  }
   const extension = file.type.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "png";
-  return `pasted-${stamp}${index > 0 ? `-${index + 1}` : ""}.${extension}`;
+  return `pasted-${stamp}${sequence > 0 ? `-${sequence + 1}` : ""}.${extension}`;
 }

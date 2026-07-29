@@ -73,14 +73,37 @@ export async function POST(request: Request) {
   const { data: folders } = await supabase.storage
     .from(ATTACHMENTS_BUCKET)
     .list(user.id, { limit: 1000 });
-  const { data: rows } = await supabase
-    .from("attachments")
-    .select("storage_path, conversation_id");
 
-  const known = new Set((rows ?? []).map((row) => row.storage_path));
-  const liveConversations = new Set(
-    (rows ?? []).map((row) => row.conversation_id),
-  );
+  // Every row, paged, before anything is deleted. PostgREST caps a select at
+  // db-max-rows — 1000 by default — and a short read here is not a smaller
+  // sweep but a wrong one: a conversation missing from the answer looks
+  // deleted, so the objects behind its live rows are removed while the rows
+  // stay, and every pill on that canvas becomes a broken link with no way
+  // back. The loop stops on an empty page rather than a short one, because
+  // the server's cap is what it is and may be lower than the page asked for.
+  const PAGE = 1000;
+  const rows: { storage_path: string; conversation_id: string }[] = [];
+  for (let from = 0; ; ) {
+    const { data, error } = await supabase
+      .from("attachments")
+      .select("storage_path, conversation_id")
+      .order("storage_path")
+      .range(from, from + PAGE - 1);
+    // A read that failed is indistinguishable from a table with nothing in
+    // it, and one of those two answers deletes everything the user owns.
+    if (error) {
+      return NextResponse.json(
+        { error: "Could not read the attachment list." },
+        { status: 500 },
+      );
+    }
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    from += data.length;
+  }
+
+  const known = new Set(rows.map((row) => row.storage_path));
+  const liveConversations = new Set(rows.map((row) => row.conversation_id));
 
   // Supabase reports a pseudo-directory as an entry with a null id.
   const conversationFolders = (folders ?? [])

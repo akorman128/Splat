@@ -45,6 +45,7 @@ import {
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
+import { MAX_ATTACHMENTS_PER_TURN } from "@/lib/attachments/types";
 import { modifierLabel } from "@/lib/shortcuts";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
 
@@ -52,6 +53,29 @@ function providerLabel(provider: Provider): string {
   return hasModelCatalog(provider)
     ? PROVIDER_LABELS[provider]
     : conversationModelLabel(provider);
+}
+
+// Drafts and ticked ancestor files reach the route as one list measured
+// against one cap. Counting them apart is how a send ends in a 400 with no
+// chip and no checkbox to point at, so the composer counts them together —
+// uploads still in flight included, because they will be ready by the time
+// Send is pressed, and ticks whose owning card is gone excluded, because they
+// have no row left to send.
+function turnAttachmentCount(
+  checkedAttachments: Record<string, boolean>,
+): number {
+  const live = new Set(
+    Object.values(useGraphStore.getState().attachments).flatMap((list) =>
+      list.map((a) => a.id),
+    ),
+  );
+  const ticked = Object.entries(checkedAttachments).filter(
+    ([id, value]) => value && live.has(id),
+  ).length;
+  const drafts = useAttachmentStore
+    .getState()
+    .drafts.filter((d) => d.status !== "error").length;
+  return drafts + ticked;
 }
 
 export function Composer({
@@ -326,6 +350,14 @@ export function Composer({
         .filter(([id, value]) => value && liveAttachmentIds.has(id))
         .map(([id]) => id),
     ];
+    // The route counts the same list and answers 400, which arrives as a
+    // failed send with the prompt handed back and nothing to act on.
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_TURN) {
+      toast.error(
+        `This prompt carries ${attachmentIds.length} files — the limit is ${MAX_ATTACHMENTS_PER_TURN}. Remove a chip or untick a file.`,
+      );
+      return;
+    }
     const position = parentNode
       ? childPosition(parentNode, allNodes)
       : rootPosition(allNodes);
@@ -390,8 +422,11 @@ export function Composer({
   // an answer being rewritten in place.
   const attachable = !regenerateNodeId;
 
+  // No `attachable` guard: enqueue already refuses a file mid-regeneration and
+  // says why, which is better than a drop that lands nowhere and explains
+  // nothing.
   function pick(files: File[], synthesiseNames = false) {
-    if (!attachable || files.length === 0) return;
+    if (files.length === 0) return;
     useAttachmentStore.getState().enqueue(files, { synthesiseNames });
   }
 
@@ -402,9 +437,14 @@ export function Composer({
         dragging && "ring-2 ring-primary",
       )}
       onDragOver={(event) => {
-        if (!attachable || !event.dataTransfer.types.includes("Files")) return;
+        if (!event.dataTransfer.types.includes("Files")) return;
+        // Unconditionally, even when nothing here will take the file: a
+        // dragover that is not prevented leaves the browser to handle the
+        // drop, and the browser navigates to the file — taking the canvas
+        // with it. The composer sits outside the tldraw container, so its own
+        // guards never see this drag.
         event.preventDefault();
-        setDragging(true);
+        if (attachable) setDragging(true);
       }}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -413,7 +453,7 @@ export function Composer({
         setDragging(false);
       }}
       onDrop={(event) => {
-        if (!attachable || !event.dataTransfer.types.includes("Files")) return;
+        if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
         setDragging(false);
         pick(Array.from(event.dataTransfer.files));
@@ -499,9 +539,19 @@ export function Composer({
               setChecked((prev) => ({ ...prev, [id]: value }))
             }
             checkedAttachments={checkedAttachments}
-            onToggleAttachment={(id, value) =>
-              setCheckedAttachments((prev) => ({ ...prev, [id]: value }))
-            }
+            onToggleAttachment={(id, value) => {
+              if (
+                value &&
+                turnAttachmentCount(checkedAttachments) >=
+                  MAX_ATTACHMENTS_PER_TURN
+              ) {
+                toast.error(
+                  `A prompt can carry ${MAX_ATTACHMENTS_PER_TURN} files — remove one to send this.`,
+                );
+                return;
+              }
+              setCheckedAttachments((prev) => ({ ...prev, [id]: value }));
+            }}
           />
         </>
       ) : (
@@ -546,13 +596,22 @@ export function Composer({
           onPaste={(e) => {
             const files = Array.from(e.clipboardData.files);
             if (files.length === 0) return;
-            e.preventDefault();
             // A screenshot arrives as "image.png" every single time, so three
             // pastes would give three identical chips. Real files keep their
             // names.
             const anonymous = files.every(
               (file) => !file.name || /^image\.\w+$/i.test(file.name),
             );
+            // Copying a range out of a spreadsheet or a document puts a
+            // rendered picture of the selection on the clipboard beside the
+            // text itself. The text is what the paste was for, and swallowing
+            // it to attach a screenshot of itself is not a trade anyone asked
+            // for. A screenshot proper carries no text, and a file copied in
+            // Finder carries its own name, so neither is caught by this.
+            if (anonymous && e.clipboardData.getData("text/plain").trim()) {
+              return;
+            }
+            e.preventDefault();
             pick(files, anonymous);
           }}
           onKeyDown={(e) => {
