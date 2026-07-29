@@ -55,6 +55,11 @@ export type CatalogModel = {
   maxOutputTokens: number | null;
   promptPrice: number | null;
   completionPrice: number | null;
+  // From the catalogue's declared input modalities. A text-only model handed an
+  // image answers with a 400, so this is worth checking before we send. It is
+  // advisory for openrouter/auto, which reports the union of everything it
+  // might route to.
+  supportsImages: boolean;
 };
 
 export function conversationModelLabel(provider: Provider): string {

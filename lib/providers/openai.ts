@@ -3,10 +3,35 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import type { ProviderAdapter, StreamEvent } from "./types";
+import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 function client(apiKey: string): OpenAI {
   return new OpenAI({ apiKey });
+}
+
+function toResponsesInput(
+  messages: ChatMessage[],
+): OpenAI.Responses.ResponseInput {
+  return messages.map((message) => {
+    if (message.role === "assistant") {
+      return { role: "assistant" as const, content: message.content };
+    }
+    if (typeof message.content === "string") {
+      return { role: "user" as const, content: message.content };
+    }
+    return {
+      role: "user" as const,
+      content: message.content.map((part) =>
+        part.type === "text"
+          ? { type: "input_text" as const, text: part.text }
+          : {
+              type: "input_image" as const,
+              image_url: `data:${part.mediaType};base64,${part.data}`,
+              detail: "auto" as const,
+            },
+      ),
+    };
+  });
 }
 
 export const openaiAdapter: ProviderAdapter = {
@@ -33,7 +58,7 @@ export const openaiAdapter: ProviderAdapter = {
   }): AsyncGenerator<StreamEvent> {
     const stream = await client(apiKey).responses.create({
       model,
-      input: messages.map((m) => ({ role: m.role, content: m.content })),
+      input: toResponsesInput(messages),
       stream: true,
       max_output_tokens: MAX_OUTPUT_TOKENS,
       ...(system ? { instructions: system } : {}),
