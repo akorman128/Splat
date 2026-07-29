@@ -50,12 +50,15 @@ export function ConversationView({
 }) {
   const router = useRouter();
   const storeConversationId = useGraphStore((s) => s.conversationId);
-  // A draft that has adopted a conversation is still this view: the store runs
-  // ahead of the route until the replace below lands.
-  const initialized =
-    storeConversationId === conversationId ||
-    (conversationId === null && storeConversationId !== null);
-  const hasNodes = useGraphStore((s) => Object.keys(s.nodes).length > 0);
+  const storeHasNodes = useGraphStore((s) => Object.keys(s.nodes).length > 0);
+  // The draft route has nothing to match the store against, and by construction
+  // no cards of its own — so it is always ready and always the empty composer.
+  // Deciding either from the store would show whatever conversation the store
+  // still holds: on the render that arrives here from another conversation, that
+  // is the one being navigated away from.
+  const draftRoute = conversationId === null;
+  const initialized = draftRoute || storeConversationId === conversationId;
+  const hasNodes = !draftRoute && storeHasNodes;
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [composerHidden, setComposerHidden] = useState(false);
@@ -97,12 +100,17 @@ export function ConversationView({
 
   // Attaching a file on the draft route writes the conversation before any card
   // exists, so the address bar has to catch up — otherwise a reload lands back
-  // on an empty /c/new and the sidebar never shows the new conversation.
+  // on an empty /c/new and the sidebar never shows the new conversation. Read the
+  // adopted id off the store rather than out of the closure: arriving here from
+  // another conversation, the closure still holds that one, and only the effect
+  // above has cleared it by the time this runs.
   useEffect(() => {
-    if (conversationId !== null || storeConversationId === null) return;
-    router.replace(`/c/${storeConversationId}`);
+    if (!draftRoute) return;
+    const adopted = useGraphStore.getState().conversationId;
+    if (!adopted) return;
+    router.replace(`/c/${adopted}`);
     router.refresh();
-  }, [conversationId, storeConversationId, router]);
+  }, [draftRoute, storeConversationId, router]);
 
   if (!initialized) return <CanvasSpinner />;
 
