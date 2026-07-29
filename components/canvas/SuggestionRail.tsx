@@ -54,7 +54,7 @@ function Chip({ suggestion }: { suggestion: SuggestionRow }) {
           : "bg-card hover:bg-accent"
       }`}
     >
-      {taken && <Check className="mt-0.5 size-3 shrink-0 text-primary" />}
+      {taken && <>✅</>}
       <span>{suggestion.text}</span>
     </button>
   );
