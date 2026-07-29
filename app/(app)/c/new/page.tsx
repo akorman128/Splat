@@ -19,6 +19,7 @@ export default async function NewConversationPage() {
       nodes={[]}
       edges={[]}
       suggestions={[]}
+      attachments={[]}
       credentials={(credentials ?? []).map((c) => ({
         provider: c.provider as Provider,
         key_last4: c.key_last4,
