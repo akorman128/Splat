@@ -9,6 +9,7 @@ import { Composer } from "@/components/composer/Composer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { modifierLabel } from "@/lib/shortcuts";
+import { CanvasSpinner } from "./CanvasSpinner";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import { DeleteNodeDialog } from "./DeleteNodeDialog";
 import { ShortcutsSheet } from "./ShortcutsSheet";
@@ -21,7 +22,10 @@ import type {
   SuggestionRow,
 } from "@/lib/types";
 
-const Canvas = dynamic(() => import("./Canvas"), { ssr: false });
+const Canvas = dynamic(() => import("./Canvas"), {
+  ssr: false,
+  loading: () => <CanvasSpinner />,
+});
 
 export function ConversationView({
   conversationId,
@@ -68,7 +72,7 @@ export function ConversationView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  if (!initialized) return null;
+  if (!initialized) return <CanvasSpinner />;
 
   const showLabel = `Show the prompt box (${modifierLabel()}H)`;
 
