@@ -5,6 +5,10 @@ import Link from "next/link";
 import { startTransition, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import {
+  attachmentObjectPaths,
+  removeAttachmentObjects,
+} from "@/lib/attachments-client";
 import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
 import {
   Sidebar,
@@ -107,6 +111,9 @@ export function AppSidebar({
     if (!pendingDelete) return;
     setDeleting(true);
     const supabase = createClient();
+    const paths = await attachmentObjectPaths({
+      conversationId: pendingDelete.id,
+    });
     const { error } = await supabase
       .from("conversations")
       .delete()
@@ -118,6 +125,7 @@ export function AppSidebar({
       });
       return;
     }
+    await removeAttachmentObjects(paths);
     const wasOpen = pathname === `/c/${pendingDelete.id}`;
     setPendingDelete(null);
     if (wasOpen) router.push("/c");

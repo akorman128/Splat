@@ -13,6 +13,7 @@ export type SubmitParams = {
   parentId: string | null;
   contextNodeIds: string[];
   skillIds: string[];
+  attachmentIds: string[];
   prompt: string;
   provider: Provider;
   model: string;
@@ -63,6 +64,7 @@ async function runStream(
         streams.clear(event.node.id);
         graph.upsertNode(event.node);
         graph.addEdges(event.edges);
+        graph.addAttachments(event.attachments);
         if (createsCard) graph.setFocusNode(event.node.id);
         onNode?.(event.node);
         break;

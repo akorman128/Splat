@@ -14,6 +14,7 @@ import "tldraw/tldraw.css";
 import { CARD_SHAPE_TYPE, CardShapeUtil, type CardShape } from "./CardShapeUtil";
 import { DragPanSelectTool } from "./DragPanSelectTool";
 import { useGraphStore } from "@/lib/store/graph-store";
+import { useAttachmentStore } from "@/lib/store/attachment-store";
 import { visibleContextEdges } from "@/lib/graph/context-edges";
 import { createClient } from "@/lib/supabase/client";
 import type { CardNode, ContextEdgeRow } from "@/lib/types";
@@ -395,12 +396,22 @@ export default function Canvas() {
             },
           );
 
+          // Left alone, tldraw turns a dropped file into an image shape on the
+          // page. On this canvas a file is something to send with a prompt, so
+          // the drop is handed to the composer instead. Registering a handler
+          // replaces the default outright; unregistering is passing null.
+          mountedEditor.registerExternalContentHandler("files", (content) => {
+            if (useGraphStore.getState().readOnly) return;
+            useAttachmentStore.getState().enqueue(content.files);
+          });
+
           setEditor(mountedEditor);
 
           return () => {
             stopDelete();
             stopListen();
             stopSelection();
+            mountedEditor.registerExternalContentHandler("files", null);
           };
         }}
       />

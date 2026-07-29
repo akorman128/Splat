@@ -69,8 +69,8 @@ type KeyResult =
   | { ok: true; apiKey: string }
   | { ok: false; status: number; error: string };
 
-// Resolved before the node is written, so a missing or undecryptable key can
-// never blank the answer a regenerate was about to replace.
+// Resolved before the node is written, so a bad key cannot blank the answer a
+// regenerate was about to replace.
 async function resolveApiKey(
   supabase: SupabaseServerClient,
   provider: Provider,
@@ -98,10 +98,8 @@ async function resolveApiKey(
   }
 }
 
-// Handing an image to a text-only model is a 400 from the provider with a
-// message nobody can act on. openrouter/auto reports the union of everything it
-// might route to, so this is advisory there — and a catalogue we could not
-// reach is not grounds for refusing a send.
+// Advisory for openrouter/auto, which reports the union of everything it might
+// route to; an unreachable catalogue is not grounds for refusing a send.
 async function imagesAllowed(
   provider: Provider,
   model: string,
@@ -132,14 +130,10 @@ export async function POST(request: Request) {
   let conversationNodes: NodeRow[];
   let conversationEdges: ContextEdgeRow[];
   let apiKey: string;
-  // The files this turn sends, in order, and their inlined image bytes. Both
-  // are resolved before anything is written: a storage failure has to be a
-  // clean JSON error, not a card left mid-stream or a rollback that cascades
-  // through claimed attachments.
+  // Both resolved before anything is written: a storage failure has to be a
+  // clean JSON error, not a card left mid-stream.
   let turnAttachments: TurnAttachment[] = [];
   let images: Map<string, ContentPart> = new Map();
-  // Only a new card claims drafts; the client needs them back to draw chips
-  // without refetching.
   let claimedAttachments: CardAttachment[] = [];
 
   const rerunNodeId = body.retryNodeId ?? body.regenerateNodeId;
@@ -215,9 +209,6 @@ export async function POST(request: Request) {
         .select("*")
         .eq("node_id", existing.id)
         .order("position"),
-      // A rerun replays exactly what the card sent: node_attachments is that
-      // record, and the selection is frozen — there is no picker in front of a
-      // regeneration to change it with.
       supabase
         .from("node_attachments")
         .select(`position, attachments!inner(${TURN_ATTACHMENT_COLUMNS})`)
@@ -247,9 +238,7 @@ export async function POST(request: Request) {
     apiKey = rerunKey.apiKey;
 
     // Omitting skillIds on a regenerate keeps whatever the card already
-    // carries; sending them (even empty) replaces the set. Attachments have no
-    // equivalent: a regenerate replays exactly the files the card sent, because
-    // there is no picker in front of it to choose differently with.
+    // carries; sending them (even empty) replaces the set.
     const rerunSkillIds =
       regenerating && Array.isArray(body.skillIds)
         ? [...new Set(body.skillIds)]
@@ -473,8 +462,8 @@ export async function POST(request: Request) {
         );
       }
 
-      // Before any write, so that a storage hiccup costs nothing but this
-      // request — nothing is claimed yet, and there is no node to roll back.
+      // Before any write: nothing is claimed yet, and there is no node to roll
+      // back.
       const load = await loadImageParts(supabase, turnAttachments);
       if (!load.ok) {
         return NextResponse.json(
@@ -538,16 +527,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: skillFailure }, { status: 400 });
     }
 
-    // Write order is load-bearing: the node exists, its context edges exist,
-    // and only then are files attached — check_node_attachment reads
-    // context_edges live to decide whether the owning card is reachable.
+    // Write order is load-bearing: node, then context edges, then files —
+    // check_node_attachment reads context_edges live to decide whether the
+    // owning card is reachable.
     if (turnAttachments.length > 0) {
       const drafts = turnAttachments.filter((a) => a.node_id === null);
       const claimedPaths: string[] = [];
 
-      // A claim cannot be undone: the trigger refuses to move an attachment
-      // between cards, and the cascade from a rolled-back node would take the
-      // rows with it. So a rollback here takes the bytes too.
+      // A claim cannot be undone — the trigger refuses to move an attachment
+      // between cards — so a rollback here takes the bytes too.
       const rollback = async (message: string, status: number) => {
         if (claimedPaths.length > 0) {
           await supabase.storage.from(ATTACHMENTS_BUCKET).remove(claimedPaths);

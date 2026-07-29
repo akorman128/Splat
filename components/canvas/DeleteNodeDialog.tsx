@@ -8,6 +8,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useStreamStore } from "@/lib/store/stream-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import {
+  attachmentObjectPaths,
+  removeAttachmentObjects,
+} from "@/lib/attachments-client";
 import { withDescendants } from "@/lib/graph/descendants";
 
 export function DeleteNodeDialog() {
@@ -22,8 +26,10 @@ export function DeleteNodeDialog() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (ids: string[]) => {
+      const paths = await attachmentObjectPaths({ nodeIds: ids });
       const { error } = await createClient().from("nodes").delete().in("id", ids);
       if (error) throw new Error(error.message);
+      await removeAttachmentObjects(paths);
       return ids;
     },
     onSuccess: (ids) => {

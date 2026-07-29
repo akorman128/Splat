@@ -11,9 +11,8 @@ import {
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-// What a turn needs to know about a file to send it. Read straight off
-// `attachments`, extracted_text and all — this is the one place that text is
-// allowed to travel.
+// The one shape that carries extracted_text; everything on the canvas uses
+// CardAttachment instead.
 export type TurnAttachment = {
   id: string;
   node_id: string | null;
@@ -25,8 +24,8 @@ export type TurnAttachment = {
   extracted_text: string | null;
   extract_status: string;
   truncated: boolean;
-  // Not for display — what the image costs in tokens is derived from these, and
-  // the estimate has to match the one the composer showed before sending.
+  // The image's token cost is derived from these, and has to match the estimate
+  // the composer showed before sending.
   image_width: number | null;
   image_height: number | null;
 };
@@ -42,8 +41,6 @@ function escapeAttribute(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
-// Delimited so the model can tell where a 400,000-character spreadsheet stops
-// and the question starts.
 function describe(attachment: TurnAttachment): string {
   const attributes = `name="${escapeAttribute(attachment.filename)}" type="${attachment.mime_type}"`;
   if (attachment.extract_status === "ok" && attachment.extracted_text) {
@@ -82,12 +79,8 @@ function contentFor(
   return parts;
 }
 
-// Which message a file rides on. Everything here is driven by *this* turn's
-// selection — never by a context card's historical set, which would re-inject
-// the file on every follow-up down the branch, the exact cost this feature
-// exists to avoid. But a file that is being replayed while its own card is in
-// context goes back where it came from, so the conversation reads the way it
-// originally happened: here is the file, here is my question about it.
+// Driven by this turn's selection, never by a context card's historical set —
+// that would re-inject the file on every follow-up down the branch.
 export function assembleMessages({
   contextIds,
   nodesById,

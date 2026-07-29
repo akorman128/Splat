@@ -8,6 +8,7 @@ import {
   ArrowUp,
   ChevronDown,
   GitBranch,
+  Paperclip,
   RefreshCw,
   Sparkles,
   X,
@@ -26,8 +27,13 @@ import { createClient } from "@/lib/supabase/client";
 import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
 import { SkillMenu, matchSkills, skillTriggerAt, type SkillTrigger } from "./SkillMenu";
+import { AttachmentChips } from "./AttachmentChips";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import {
+  readyAttachmentIds,
+  useAttachmentStore,
+} from "@/lib/store/attachment-store";
 import { useChatStream } from "@/lib/chat-client";
 import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition, rootPosition } from "@/lib/layout";
@@ -39,6 +45,7 @@ import {
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
+import { MAX_ATTACHMENTS_PER_TURN } from "@/lib/attachments/types";
 import { modifierLabel } from "@/lib/shortcuts";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
 
@@ -46,6 +53,33 @@ function providerLabel(provider: Provider): string {
   return hasModelCatalog(provider)
     ? PROVIDER_LABELS[provider]
     : conversationModelLabel(provider);
+}
+
+// Ticks whose owning card is gone are excluded: they have no row left to send,
+// and the route answers the whole list with a 400.
+function liveCheckedAttachmentIds(
+  checkedAttachments: Record<string, boolean>,
+): string[] {
+  const live = new Set(
+    Object.values(useGraphStore.getState().attachments).flatMap((list) =>
+      list.map((a) => a.id),
+    ),
+  );
+  return Object.entries(checkedAttachments)
+    .filter(([id, value]) => value && live.has(id))
+    .map(([id]) => id);
+}
+
+// Drafts and ticked ancestor files reach the route as one list measured
+// against one cap, so they are counted together — uploads still in flight
+// included, because they will be ready by the time Send is pressed.
+function turnAttachmentCount(
+  checkedAttachments: Record<string, boolean>,
+): number {
+  const drafts = useAttachmentStore
+    .getState()
+    .drafts.filter((d) => d.status !== "error").length;
+  return drafts + liveCheckedAttachmentIds(checkedAttachments).length;
 }
 
 export function Composer({
@@ -67,7 +101,18 @@ export function Composer({
   const [attached, setAttached] = useState<SkillSummary[]>([]);
   const [trigger, setTrigger] = useState<SkillTrigger | null>(null);
   const [highlight, setHighlight] = useState(0);
+  const [checkedAttachments, setCheckedAttachments] = useState<
+    Record<string, boolean>
+  >({});
+  const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // A boolean, not the array: `drafts` is replaced on every progress tick, and
+  // subscribing to it re-renders the whole composer dozens of times per file.
+  const uploading = useAttachmentStore((s) =>
+    s.drafts.some((d) => d.status === "uploading"),
+  );
 
   const matches = useMemo(
     () =>
@@ -126,6 +171,7 @@ export function Composer({
   const [lastParentId, setLastParentId] = useState<string | null>(null);
   if ((parent?.id ?? null) !== lastParentId) {
     setLastParentId(parent?.id ?? null);
+    setCheckedAttachments({});
     if (!parent) {
       setChecked({});
     } else {
@@ -156,9 +202,8 @@ export function Composer({
     }
   }
 
-  // The skills a card was made with, so a regeneration starts from the same set
-  // and can be edited before it runs. A skill deleted since then has no id left
-  // to re-send and drops out of the set.
+  // A skill deleted since the card was made has no id left to re-send, and
+  // drops out of the set.
   useEffect(() => {
     if (!regenerateNodeId) return;
     let active = true;
@@ -268,6 +313,13 @@ export function Composer({
     const text = prompt.trim();
     if (!text || !provider) return;
 
+    // Enter reaches submit() without passing the Send button, so the guard has
+    // to live here too.
+    if (useAttachmentStore.getState().drafts.some((d) => d.status === "uploading")) {
+      toast.error("Still uploading — one moment.");
+      return;
+    }
+
     const graph = useGraphStore.getState();
     if (!graph.conversationId) return;
     const allNodes = Object.values(graph.nodes);
@@ -280,6 +332,16 @@ export function Composer({
           .filter(([id, v]) => v && graph.nodes[id])
           .map(([id]) => id)
       : [];
+    const attachmentIds = [
+      ...readyAttachmentIds(useAttachmentStore.getState().drafts),
+      ...liveCheckedAttachmentIds(checkedAttachments),
+    ];
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_TURN) {
+      toast.error(
+        `This prompt carries ${attachmentIds.length} files — the limit is ${MAX_ATTACHMENTS_PER_TURN}. Remove a chip or untick a file.`,
+      );
+      return;
+    }
     const position = parentNode
       ? childPosition(parentNode, allNodes)
       : rootPosition(allNodes);
@@ -294,13 +356,19 @@ export function Composer({
           parentId: parentNode?.id ?? null,
           contextNodeIds,
           skillIds: attached.map((s) => s.id),
+          attachmentIds,
           prompt: text,
           provider,
           model: model ?? defaultModel(provider),
           canvasX: position.x,
           canvasY: position.y,
         },
-        onNode: () => setSending(false),
+        onNode: () => {
+          setSending(false);
+          // Let go rather than delete — the card owns them now.
+          useAttachmentStore.getState().released(attachmentIds);
+          setCheckedAttachments({});
+        },
         onTitled: (_nodeId, isRoot) => {
           if (isRoot) router.refresh();
         },
@@ -331,8 +399,39 @@ export function Composer({
     );
   }
 
+  const attachable = !regenerateNodeId;
+
+  function pick(files: File[], synthesiseNames = false) {
+    useAttachmentStore.getState().enqueue(files, { synthesiseNames });
+  }
+
   return (
-    <div className="relative space-y-2 rounded-xl border bg-card p-3 shadow-lg">
+    <div
+      className={cn(
+        "relative space-y-2 rounded-xl border bg-card p-3 shadow-lg",
+        dragging && "ring-2 ring-primary",
+      )}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        // Unconditionally, even when nothing here will take the file: an
+        // unprevented dragover lets the browser navigate to the dropped file,
+        // taking the canvas with it.
+        event.preventDefault();
+        if (attachable) setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+        setDragging(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragging(false);
+        pick(Array.from(event.dataTransfer.files));
+      }}
+    >
       {onHide && (
         <Button
           variant="ghost"
@@ -412,6 +511,20 @@ export function Composer({
             onToggle={(id, value) =>
               setChecked((prev) => ({ ...prev, [id]: value }))
             }
+            checkedAttachments={checkedAttachments}
+            onToggleAttachment={(id, value) => {
+              if (
+                value &&
+                turnAttachmentCount(checkedAttachments) >=
+                  MAX_ATTACHMENTS_PER_TURN
+              ) {
+                toast.error(
+                  `A prompt can carry ${MAX_ATTACHMENTS_PER_TURN} files — remove one to send this.`,
+                );
+                return;
+              }
+              setCheckedAttachments((prev) => ({ ...prev, [id]: value }));
+            }}
           />
         </>
       ) : (
@@ -427,6 +540,8 @@ export function Composer({
           </p>
         )
       )}
+
+      <AttachmentChips />
 
       <div className="relative">
         {menuOpen && (
@@ -451,6 +566,24 @@ export function Composer({
             setHighlight(0);
           }}
           onBlur={() => setTrigger(null)}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files);
+            if (files.length === 0) return;
+            // A screenshot arrives as "image.png" every time; real files keep
+            // their names.
+            const anonymous = files.every(
+              (file) => !file.name || /^image\.\w+$/i.test(file.name),
+            );
+            // Copying out of a spreadsheet puts a rendered picture of the
+            // selection on the clipboard beside the text; the text is what the
+            // paste was for. A screenshot proper carries no text, and a file
+            // copied in Finder carries its own name, so neither is caught.
+            if (anonymous && e.clipboardData.getData("text/plain").trim()) {
+              return;
+            }
+            e.preventDefault();
+            pick(files, anonymous);
+          }}
           onKeyDown={(e) => {
             if (menuOpen) {
               if (e.key === "ArrowDown") {
@@ -492,6 +625,29 @@ export function Composer({
       </div>
 
       <div className="flex items-center gap-2">
+        {attachable && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                pick(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="Attach a file (or drop one anywhere on the canvas)"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip />
+              <span className="sr-only">Attach a file</span>
+            </Button>
+          </>
+        )}
         <Select
           value={provider}
           onValueChange={(value) => {
@@ -521,8 +677,9 @@ export function Composer({
         <Button
           size="sm"
           className="ml-auto"
+          title={uploading ? "Waiting for the upload to finish" : undefined}
           onClick={submit}
-          disabled={!prompt.trim() || sending}
+          disabled={!prompt.trim() || sending || uploading}
         >
           {regenerateNodeId ? (
             <>

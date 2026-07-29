@@ -1,21 +1,26 @@
 "use client";
 
 import { create } from "zustand";
-import type { CardNode, ContextEdgeRow, SuggestionRow } from "@/lib/types";
+import type {
+  CardAttachment,
+  CardNode,
+  ContextEdgeRow,
+  SuggestionRow,
+} from "@/lib/types";
 
 type GraphState = {
   conversationId: string | null;
-  // A shared canvas is a snapshot: no composer, no card actions, no writes.
   readOnly: boolean;
   nodes: Record<string, CardNode>;
   edges: ContextEdgeRow[];
   contextCounts: Record<string, number>;
   suggestions: Record<string, SuggestionRow[]>;
+  // Keyed by the card that owns the file, not by every card that replays it.
+  attachments: Record<string, CardAttachment[]>;
   selectedNodeId: string | null;
   hoveredNodeId: string | null;
   expandedNodeId: string | null;
   deletingNodeIds: string[];
-  // Set when a freshly created card should pull the camera to it.
   focusNodeId: string | null;
   // Deleted ids are kept so a stream still in flight cannot re-add its card.
   removedNodeIds: Record<string, true>;
@@ -25,10 +30,12 @@ type GraphState = {
     nodes: CardNode[];
     edges: ContextEdgeRow[];
     suggestions: SuggestionRow[];
+    attachments: CardAttachment[];
     readOnly?: boolean;
   }): void;
   upsertNode(node: CardNode): void;
   addEdges(edges: ContextEdgeRow[]): void;
+  addAttachments(attachments: CardAttachment[]): void;
   setSuggestions(nodeId: string, rows: SuggestionRow[]): void;
   markSuggestionTaken(suggestionId: string, takenAt: string): void;
   setSelectedNode(id: string | null): void;
@@ -51,6 +58,20 @@ function countByConsumer(edges: ContextEdgeRow[]): Record<string, number> {
   return counts;
 }
 
+function groupByOwner(
+  attachments: CardAttachment[],
+): Record<string, CardAttachment[]> {
+  const grouped: Record<string, CardAttachment[]> = {};
+  for (const a of attachments) {
+    if (!a.node_id) continue;
+    (grouped[a.node_id] ??= []).push(a);
+  }
+  for (const list of Object.values(grouped)) {
+    list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+  return grouped;
+}
+
 export const useGraphStore = create<GraphState>((set) => ({
   conversationId: null,
   readOnly: false,
@@ -58,6 +79,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   edges: [],
   contextCounts: {},
   suggestions: {},
+  attachments: {},
   selectedNodeId: null,
   hoveredNodeId: null,
   expandedNodeId: null,
@@ -65,7 +87,14 @@ export const useGraphStore = create<GraphState>((set) => ({
   focusNodeId: null,
   removedNodeIds: {},
 
-  init({ conversationId, nodes, edges, suggestions, readOnly = false }) {
+  init({
+    conversationId,
+    nodes,
+    edges,
+    suggestions,
+    attachments,
+    readOnly = false,
+  }) {
     const suggestionMap: Record<string, SuggestionRow[]> = {};
     for (const s of suggestions) {
       (suggestionMap[s.node_id] ??= []).push(s);
@@ -80,6 +109,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       edges,
       contextCounts: countByConsumer(edges),
       suggestions: suggestionMap,
+      attachments: groupByOwner(attachments),
       selectedNodeId: null,
       hoveredNodeId: null,
       expandedNodeId: null,
@@ -112,6 +142,23 @@ export const useGraphStore = create<GraphState>((set) => ({
         contextCounts[e.node_id] = (contextCounts[e.node_id] ?? 0) + 1;
       }
       return { edges: [...state.edges, ...fresh], contextCounts };
+    });
+  },
+
+  addAttachments(attachments) {
+    if (attachments.length === 0) return;
+    set((state) => {
+      const next = { ...state.attachments };
+      let changed = false;
+      for (const attachment of attachments) {
+        const ownerId = attachment.node_id;
+        if (!ownerId || state.removedNodeIds[ownerId]) continue;
+        const existing = next[ownerId] ?? [];
+        if (existing.some((a) => a.id === attachment.id)) continue;
+        next[ownerId] = [...existing, attachment];
+        changed = true;
+      }
+      return changed ? { attachments: next } : state;
     });
   },
 
@@ -169,6 +216,10 @@ export const useGraphStore = create<GraphState>((set) => ({
       for (const [id, rows] of Object.entries(state.suggestions)) {
         if (!gone.has(id)) suggestions[id] = rows;
       }
+      const attachments: Record<string, CardAttachment[]> = {};
+      for (const [id, rows] of Object.entries(state.attachments)) {
+        if (!gone.has(id)) attachments[id] = rows;
+      }
       const edges = state.edges.filter(
         (e) => !gone.has(e.node_id) && !gone.has(e.source_node_id),
       );
@@ -180,6 +231,7 @@ export const useGraphStore = create<GraphState>((set) => ({
         edges,
         contextCounts: countByConsumer(edges),
         suggestions,
+        attachments,
         removedNodeIds,
         deletingNodeIds: [],
         selectedNodeId:
