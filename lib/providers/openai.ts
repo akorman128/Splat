@@ -9,26 +9,29 @@ function client(apiKey: string): OpenAI {
   return new OpenAI({ apiKey });
 }
 
-// `detail` is required on an input_image, not optional — the shape everyone
-// half-remembers, `{ type: "input_image", image_url }`, does not typecheck.
 function toResponsesInput(
   messages: ChatMessage[],
 ): OpenAI.Responses.ResponseInput {
-  return messages.map((message) => ({
-    role: message.role,
-    content:
-      typeof message.content === "string"
-        ? message.content
-        : message.content.map((part) =>
-            part.type === "text"
-              ? { type: "input_text" as const, text: part.text }
-              : {
-                  type: "input_image" as const,
-                  image_url: `data:${part.mediaType};base64,${part.data}`,
-                  detail: "auto" as const,
-                },
-          ),
-  }));
+  return messages.map((message) => {
+    if (message.role === "assistant") {
+      return { role: "assistant" as const, content: message.content };
+    }
+    if (typeof message.content === "string") {
+      return { role: "user" as const, content: message.content };
+    }
+    return {
+      role: "user" as const,
+      content: message.content.map((part) =>
+        part.type === "text"
+          ? { type: "input_text" as const, text: part.text }
+          : {
+              type: "input_image" as const,
+              image_url: `data:${part.mediaType};base64,${part.data}`,
+              detail: "auto" as const,
+            },
+      ),
+    };
+  });
 }
 
 export const openaiAdapter: ProviderAdapter = {

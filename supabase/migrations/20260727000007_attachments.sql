@@ -242,6 +242,74 @@ create policy "node_attachments_delete_own" on public.node_attachments
     )
   );
 
+-- ---------------------------------------------------------------------------
+-- Every card reachable by walking up from p_node, over the union of parent
+-- edges and context edges, including p_node itself.
+--
+-- Both trigger functions below need this walk and had a copy each, so a new
+-- edge type would have had to be added to both or the two invariants would
+-- silently diverge. Bounded by conversation, which the callers already know:
+-- the inline copies joined all of nodes to all of context_edges on every
+-- recursion step, re-materialising the caller's whole graph across every
+-- conversation they own, per level, per row inserted.
+-- ---------------------------------------------------------------------------
+create function public.node_ancestors(p_node uuid, p_conversation uuid)
+returns setof uuid
+language sql
+stable
+set search_path = ''
+as $$
+  with recursive anc(id) as (
+    select p_node
+    union
+    select e.src from (
+      select n.id as dst, n.parent_id as src
+        from public.nodes n
+        where n.conversation_id = p_conversation and n.parent_id is not null
+      union all
+      select ce.node_id as dst, ce.source_node_id as src
+        from public.context_edges ce
+        join public.nodes n on n.id = ce.node_id
+        where n.conversation_id = p_conversation
+    ) e
+    join anc on e.dst = anc.id
+  )
+  select id from anc;
+$$;
+
+-- Replaces the definition from 20260725000001 to call the shared walk. The
+-- rejection is unchanged: walk up from the source, and if the consumer is
+-- reachable the edge would close a cycle.
+create or replace function public.check_context_edge()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  node_conversation uuid;
+  source_conversation uuid;
+begin
+  select conversation_id into node_conversation
+    from public.nodes where id = new.node_id;
+  select conversation_id into source_conversation
+    from public.nodes where id = new.source_node_id;
+  if node_conversation is null or source_conversation is null then
+    raise exception 'context edge references a missing node';
+  end if;
+  if node_conversation <> source_conversation then
+    raise exception 'context edge crosses conversations';
+  end if;
+  if exists (
+    select 1
+      from public.node_ancestors(new.source_node_id, source_conversation) a(id)
+      where a.id = new.node_id
+  ) then
+    raise exception 'context edge would create a cycle';
+  end if;
+  return new;
+end;
+$$;
+
 -- The mirror image of check_context_edge. That one walks up from the source and
 -- rejects when the consumer is reachable, because that would be a cycle. This
 -- one walks up from the consumer and rejects when the owning card is not
@@ -291,19 +359,9 @@ begin
   end if;
 
   if not exists (
-    with recursive anc(id) as (
-      select new.node_id
-      union
-      select e.src from (
-        select n.id as dst, n.parent_id as src
-          from public.nodes n where n.parent_id is not null
-        union all
-        select ce.node_id as dst, ce.source_node_id as src
-          from public.context_edges ce
-      ) e
-      join anc on e.dst = anc.id
-    )
-    select 1 from anc where id = owner_node
+    select 1
+      from public.node_ancestors(new.node_id, node_conversation) a(id)
+      where a.id = owner_node
   ) then
     raise exception 'attachment is not owned by this card or one of its ancestors';
   end if;

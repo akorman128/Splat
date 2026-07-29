@@ -4,8 +4,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import { messageText } from "./types";
-import { IMAGE_TOKEN_ESTIMATE } from "@/lib/tokens";
+import { estimateImageTokens } from "@/lib/tokens";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
@@ -31,18 +30,15 @@ const OUTPUT_RESERVE_TOKENS = 512;
 const MIN_OUTPUT_TOKENS = 256;
 const FOLLOWUPS_MAX_TOKENS = 2000;
 
-// This one used to be `m.content.length` summed over the messages, which kept
-// compiling once content became a union — `.length` exists on an array too —
-// while quietly counting a 60k-character PDF as 1. outputBudget() would then
-// hand the model a max_tokens it could not honour alongside the real prompt.
-// Parts are summed individually, and images are added after the /4 because
-// their cost has nothing to do with how long the base64 is.
+// Images are priced off their dimensions by the same estimator the composer
+// shows the user, not off the base64 length, and added after the /4 for the
+// same reason.
 function estimatePromptTokens(
   messages: ChatMessage[],
   system?: string,
 ): number {
   let chars = system?.length ?? 0;
-  let images = 0;
+  let imageTokens = 0;
   for (const message of messages) {
     if (typeof message.content === "string") {
       chars += message.content.length;
@@ -50,19 +46,15 @@ function estimatePromptTokens(
     }
     for (const part of message.content) {
       if (part.type === "text") chars += part.text.length;
-      else images += 1;
+      else imageTokens += estimateImageTokens(part.width, part.height);
     }
   }
   const count = messages.length + (system ? 1 : 0);
-  return Math.ceil(chars / 4) + images * IMAGE_TOKEN_ESTIMATE + count * 8;
+  return Math.ceil(chars / 4) + imageTokens + count * 8;
 }
 
-// OpenRouter used to be handed `messages` raw — it only ever compiled because
-// `{ role, content: string }` is structurally a ChatCompletionMessageParam. It
-// stops being one the moment content can be an array, so the mapping is now
-// explicit. The skill system prompt is prepended here rather than by the
-// caller, so the budget above and the request below cannot disagree about what
-// is being sent.
+// The system prompt is prepended here rather than by the caller, so the budget
+// above and the request below cannot disagree about what is being sent.
 function toChatCompletions(
   messages: ChatMessage[],
   system?: string,
@@ -70,7 +62,7 @@ function toChatCompletions(
   const mapped = messages.map(
     (message): OpenAI.ChatCompletionMessageParam => {
       if (message.role === "assistant") {
-        return { role: "assistant", content: messageText(message.content) };
+        return { role: "assistant", content: message.content };
       }
       if (typeof message.content === "string") {
         return { role: "user", content: message.content };
@@ -95,13 +87,17 @@ function toChatCompletions(
     : mapped;
 }
 
+// null means the catalogue has no entry for this model, so the caller should
+// fall back to its own default. Running out of room is emphatically not that
+// case — asking for the maximum is the one thing that cannot work — so it
+// throws rather than returning a value the caller would coalesce away.
 async function outputBudget(
   model: string,
   messages: ChatMessage[],
   system?: string,
-): Promise<number | undefined> {
+): Promise<number | null> {
   const entry = await catalogEntry("openrouter", model);
-  if (!entry) return undefined;
+  if (!entry) return null;
 
   let budget = MAX_OUTPUT_TOKENS;
   if (entry.maxOutputTokens) {
@@ -112,9 +108,14 @@ async function outputBudget(
       entry.contextLength -
       estimatePromptTokens(messages, system) -
       OUTPUT_RESERVE_TOKENS;
+    if (room < MIN_OUTPUT_TOKENS) {
+      throw new Error(
+        `This conversation is too long for ${model} — it leaves no room for a reply. Start a new card or pick a model with a larger context window.`,
+      );
+    }
     budget = Math.min(budget, room);
   }
-  return budget >= MIN_OUTPUT_TOKENS ? budget : undefined;
+  return budget;
 }
 
 const COMPLETE_FINISH_REASONS = new Set([
@@ -213,7 +214,7 @@ export const openrouterAdapter: ProviderAdapter = {
       messages: toChatCompletions(messages, system),
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: await outputBudget(model, messages, system),
+      max_tokens: (await outputBudget(model, messages, system)) ?? undefined,
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {

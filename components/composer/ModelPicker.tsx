@@ -17,14 +17,9 @@ import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/query/api";
 import { queryKeys } from "@/lib/query/keys";
 import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/providers/models";
+import { formatTokens } from "@/lib/tokens";
 
 const MAX_ROWS = 80;
-
-function formatTokens(tokens: number, suffix: string): string {
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 1_000_000)}M ${suffix}`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K ${suffix}`;
-  return `${tokens} ${suffix}`;
-}
 
 function formatLimits(model: CatalogModel): string | null {
   const parts: string[] = [];

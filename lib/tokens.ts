@@ -2,12 +2,22 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// One decimal below ten, none above, and never a trailing .0 — rounding before
+// choosing the format matters, or 9999 reads "10.0k" next to 10000's "10k".
+function scaled(value: number): string {
+  return value < 9.95
+    ? value.toFixed(1).replace(/\.0$/, "")
+    : String(Math.round(value));
+}
+
 // A file's estimate runs to five digits where a card's runs to three, and a
-// column of raw numbers stops being comparable at a glance.
-export function formatTokens(tokens: number): string {
-  if (tokens < 1000) return String(tokens);
-  const thousands = tokens / 1000;
-  return `${thousands < 10 ? thousands.toFixed(1) : Math.round(thousands)}k`;
+// column of raw numbers stops being comparable at a glance. The suffix is what
+// the model list needs ("128k ctx"); everything else wants the bare number.
+export function formatTokens(tokens: number, suffix?: string): string {
+  const unit = suffix ? ` ${suffix}` : "";
+  if (tokens >= 1_000_000) return `${scaled(tokens / 1_000_000)}M${unit}`;
+  if (tokens >= 1000) return `${scaled(tokens / 1000)}k${unit}`;
+  return `${tokens}${unit}`;
 }
 
 // Anthropic's published rule of thumb — width * height / 750 — which OpenAI's

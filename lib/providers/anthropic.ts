@@ -10,24 +10,29 @@ function client(apiKey: string): Anthropic {
 }
 
 function toAnthropic(messages: ChatMessage[]): Anthropic.MessageParam[] {
-  return messages.map((message) => ({
-    role: message.role,
-    content:
-      typeof message.content === "string"
-        ? message.content
-        : message.content.map((part) =>
-            part.type === "text"
-              ? { type: "text" as const, text: part.text }
-              : {
-                  type: "image" as const,
-                  source: {
-                    type: "base64" as const,
-                    media_type: part.mediaType,
-                    data: part.data,
-                  },
-                },
-          ),
-  }));
+  return messages.map((message): Anthropic.MessageParam => {
+    if (message.role === "assistant") {
+      return { role: "assistant", content: message.content };
+    }
+    if (typeof message.content === "string") {
+      return { role: "user", content: message.content };
+    }
+    return {
+      role: "user",
+      content: message.content.map((part) =>
+        part.type === "text"
+          ? { type: "text" as const, text: part.text }
+          : {
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: part.mediaType,
+                data: part.data,
+              },
+            },
+      ),
+    };
+  });
 }
 
 export const anthropicAdapter: ProviderAdapter = {
