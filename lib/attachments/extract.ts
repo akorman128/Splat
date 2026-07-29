@@ -17,10 +17,8 @@ export type ExtractResult = {
   height: number | null;
 };
 
-// Extraction happens once, at upload, and never again: the context picker has
-// to price a file in tokens before the prompt is ever sent, and that number
-// cannot exist until the text does. The parsers are loaded on demand so a PNG
-// upload never pays to initialise the PDF engine.
+// The parsers are imported on demand so a PNG upload never pays to initialise
+// the PDF engine.
 
 async function fromPdf(bytes: Uint8Array): Promise<string> {
   const { extractText } = await import("unpdf");
@@ -39,9 +37,8 @@ async function fromDocx(bytes: Uint8Array): Promise<string> {
   return value;
 }
 
-// A cell is not a string. read-excel-file hands back Date objects, booleans and
-// numbers, and a formula that returned nothing comes through as null — so every
-// value goes through here or the sheet renders as a wall of [object Object].
+// read-excel-file hands back Date objects, booleans, numbers and nulls, not
+// strings.
 function cellToString(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -74,15 +71,13 @@ const NUL = String.fromCharCode(0);
 function fromText(bytes: Uint8Array): string {
   const text = new TextDecoder("utf-8").decode(bytes);
   // A NUL in the first few KB is the cheapest reliable "this is not text".
-  // Without it, a binary renamed to .txt becomes 2MB of replacement characters.
   if (text.slice(0, 8192).includes(NUL)) {
     throw new Error("This looks like a binary file, not text.");
   }
   return text;
 }
 
-// Never fatal: a dimensionless image is a worse token estimate, not a failed
-// upload.
+// Never fatal: a dimensionless image is a worse estimate, not a failed upload.
 async function measure(
   bytes: Uint8Array,
 ): Promise<{ width: number | null; height: number | null }> {
