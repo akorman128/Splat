@@ -39,6 +39,15 @@ function formatPrice(model: CatalogModel): string | null {
   return `${perMillion(model.promptPrice)}/M in · ${perMillion(model.completionPrice)}/M out`;
 }
 
+// OpenAI and Anthropic quote no prices on the endpoint that lists their models,
+// so a whole list without one is a provider that does not publish them — not a
+// list of models that are free or variably priced.
+function publishesPrices(models: CatalogModel[]): boolean {
+  return models.some(
+    (m) => m.promptPrice !== null || m.completionPrice !== null,
+  );
+}
+
 export function ModelPicker({
   provider,
   value,
@@ -67,6 +76,11 @@ export function ModelPicker({
     enabled: open,
     staleTime: Infinity,
   });
+
+  const priced = useMemo(
+    () => (models ? publishesPrices(models) : false),
+    [models],
+  );
 
   const matches = useMemo(() => {
     if (!models) return [];
@@ -101,8 +115,8 @@ export function ModelPicker({
           <DialogHeader>
             <DialogTitle>Choose a model</DialogTitle>
             <DialogDescription>
-              Every model {PROVIDER_LABELS[provider]} serves. A few need their
-              own provider setup or credit on your account.
+              Every model your {PROVIDER_LABELS[provider]} key can reach. A few
+              need their own setup or credit on that account.
             </DialogDescription>
           </DialogHeader>
 
@@ -131,7 +145,7 @@ export function ModelPicker({
                 {matches.slice(0, MAX_ROWS).map((model) => {
                   const selected = model.id === value;
                   const limits = formatLimits(model);
-                  const price = formatPrice(model);
+                  const price = priced ? formatPrice(model) : null;
                   return (
                     <button
                       key={model.id}
@@ -156,9 +170,11 @@ export function ModelPicker({
                         <span className="block truncate text-sm">
                           {model.name}
                         </span>
-                        <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                          {model.id}
-                        </span>
+                        {model.id !== model.name && (
+                          <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                            {model.id}
+                          </span>
+                        )}
                         {(limits || price) && (
                           <span className="block truncate text-[11px] text-muted-foreground">
                             {[limits, price].filter(Boolean).join(" · ")}

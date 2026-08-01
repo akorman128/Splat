@@ -17,7 +17,7 @@ export default async function OnboardingPage() {
           <p className="text-sm text-muted-foreground">
             🫟 Splat is bring-your-own-key: your prompts run against your own
             OpenAI, Anthropic, or OpenRouter account. Add at least one key to
-            start — OpenRouter opens up any model it serves.
+            start — every model that key can reach is yours to pick from.
           </p>
         </div>
         <ProviderKeyList />

@@ -106,11 +106,12 @@ function toChatCompletions(
 // case — asking for the maximum is the one thing that cannot work — so it
 // throws rather than returning a value the caller would coalesce away.
 async function outputBudget(
+  apiKey: string,
   model: string,
   messages: ChatMessage[],
   system?: string,
 ): Promise<number | null> {
-  const entry = await catalogEntry("openrouter", model);
+  const entry = await catalogEntry("openrouter", model, apiKey);
   if (!entry) return null;
 
   let budget = MAX_OUTPUT_TOKENS;
@@ -228,7 +229,8 @@ export const openrouterAdapter: ProviderAdapter = {
       messages: toChatCompletions(messages, system),
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: (await outputBudget(model, messages, system)) ?? undefined,
+      max_tokens:
+        (await outputBudget(apiKey, model, messages, system)) ?? undefined,
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {
@@ -266,7 +268,7 @@ export const openrouterAdapter: ProviderAdapter = {
       { role: "user", content: followupsPrompt(prompt, response) },
     ];
     const call = async (target: string) => {
-      const budget = await outputBudget(target, messages);
+      const budget = await outputBudget(apiKey, target, messages);
       const res = await client(apiKey).chat.completions.parse({
         model: target,
         messages: toChatCompletions(messages),
