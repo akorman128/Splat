@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { modifierLabel } from "@/lib/shortcuts";
 import { CanvasSpinner } from "./CanvasSpinner";
+import { CardOutline } from "./CardOutline";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import { DeleteNodeDialog } from "./DeleteNodeDialog";
 import { ShortcutsSheet } from "./ShortcutsSheet";
@@ -121,6 +122,7 @@ export function ConversationView({
       {hasNodes ? (
         <>
           <Canvas />
+          <CardOutline />
           <div
             data-composer-bar
             className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center p-4"
