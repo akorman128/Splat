@@ -22,6 +22,7 @@ import {
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { neighboursOf } from "@/lib/graph/neighbours";
+import { CardAttachmentList } from "./CardAttachmentList";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
 
@@ -61,7 +62,7 @@ export function ExpandedCardOverlay() {
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
-  const { node, responseText, contextCount, isError, isStreaming } =
+  const { node, responseText, contextCount, attachments, isError, isStreaming } =
     useCardState(expandedNodeId);
 
   const { parentId, childId, prevSiblingId, nextSiblingId } = useMemo(
@@ -109,6 +110,11 @@ export function ExpandedCardOverlay() {
             {node.prompt}
           </DialogDescription>
         </DialogHeader>
+        {attachments.length > 0 && (
+          <div className="border-b px-6 py-3">
+            <CardAttachmentList attachments={attachments} />
+          </div>
+        )}
         <div
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto px-6 py-4"

@@ -21,15 +21,23 @@ function toResponsesInput(
     }
     return {
       role: "user" as const,
-      content: message.content.map((part) =>
-        part.type === "text"
-          ? { type: "input_text" as const, text: part.text }
-          : {
-              type: "input_image" as const,
-              image_url: `data:${part.mediaType};base64,${part.data}`,
-              detail: "auto" as const,
-            },
-      ),
+      content: message.content.map((part) => {
+        if (part.type === "text") {
+          return { type: "input_text" as const, text: part.text };
+        }
+        if (part.type === "document") {
+          return {
+            type: "input_file" as const,
+            filename: part.filename,
+            file_data: `data:application/pdf;base64,${part.data}`,
+          };
+        }
+        return {
+          type: "input_image" as const,
+          image_url: `data:${part.mediaType};base64,${part.data}`,
+          detail: "auto" as const,
+        };
+      }),
     };
   });
 }

@@ -6,13 +6,17 @@ import Link from "next/link";
 import { Eye } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { Button } from "@/components/ui/button";
+import { CanvasSpinner } from "./CanvasSpinner";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import type { SharedConversation } from "@/lib/types";
 
-const Canvas = dynamic(() => import("./Canvas"), { ssr: false });
+const Canvas = dynamic(() => import("./Canvas"), {
+  ssr: false,
+  loading: () => <CanvasSpinner />,
+});
 
 export function SharedConversationView({ shared }: { shared: SharedConversation }) {
-  const { conversation, nodes, edges, suggestions } = shared;
+  const { conversation, nodes, edges, suggestions, attachments } = shared;
   const initialized = useGraphStore(
     (s) => s.conversationId === conversation.id && s.readOnly,
   );
@@ -23,6 +27,7 @@ export function SharedConversationView({ shared }: { shared: SharedConversation 
       nodes,
       edges,
       suggestions,
+      attachments: attachments ?? [],
       readOnly: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,7 +56,7 @@ export function SharedConversationView({ shared }: { shared: SharedConversation 
         </Button>
       </header>
       <div className="relative flex-1 overflow-hidden">
-        {!initialized ? null : nodes.length > 0 ? (
+        {!initialized ? <CanvasSpinner /> : nodes.length > 0 ? (
           <>
             <Canvas />
             <ExpandedCardOverlay />

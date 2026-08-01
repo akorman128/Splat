@@ -6,21 +6,19 @@ import { extractAttachment } from "@/lib/attachments/extract";
 import {
   ATTACHMENTS_BUCKET,
   CARD_ATTACHMENT_COLUMNS,
+  MAX_INLINE_BYTES,
   SIZE_CAPS,
   classify,
   formatBytes,
+  sentAsPages,
+  sizeCapMessage,
   storageExtension,
 } from "@/lib/attachments/types";
 
-// Parsing a 200-page PDF is the slow part, not the transfer.
 export const maxDuration = 60;
 
 const MAX_FILENAME_LENGTH = 200;
 
-// The bytes come through this route rather than a signed direct-to-storage URL
-// because the server needs them anyway: a file has no token estimate until its
-// text has been extracted, and extraction cannot happen in the browser. Going
-// direct would mean uploading, then downloading the same bytes back to parse.
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) {
@@ -53,9 +51,8 @@ export async function POST(request: Request) {
     );
   }
 
-  // Classified before truncation: a name long enough to be cut loses its
-  // extension, and a .ts file with no extension left falls back to the MIME the
-  // browser reported — video/mp2t — and is rejected as video.
+  // Classified before truncation: a cut name loses its extension, and falls
+  // back to the MIME the browser reported.
   const untruncated = file.name.split(/[\\/]/).pop() || "attachment";
   const classification = classify(untruncated, file.type);
   const filename = untruncated.slice(0, MAX_FILENAME_LENGTH);
@@ -74,7 +71,7 @@ export async function POST(request: Request) {
   if (file.size > cap) {
     return NextResponse.json(
       {
-        error: `${filename} is ${formatBytes(file.size)} — the limit for this kind of file is ${formatBytes(cap)}.`,
+        error: `${filename} is ${sizeCapMessage(file.size, cap)}`,
       },
       { status: 413 },
     );
@@ -94,10 +91,26 @@ export async function POST(request: Request) {
     );
   }
 
-  // Past this line the object exists, so every failure has to take it back out
-  // — an object with no row is invisible to the app and never reclaimed.
+  // Past this line the object exists, so every failure has to take it back out.
   try {
     const extracted = await extractAttachment(bytes, kind);
+
+    // Caught here rather than at send: a PDF with no text to extract travels as
+    // its own bytes, so one too large to fit a request is a file the composer
+    // would take and then refuse to send for as long as it sat there.
+    if (
+      sentAsPages({ kind, extract_status: extracted.status }) &&
+      file.size > MAX_INLINE_BYTES
+    ) {
+      await supabase.storage.from(ATTACHMENTS_BUCKET).remove([path]);
+      return NextResponse.json(
+        {
+          error: `${filename} is a ${formatBytes(file.size)} PDF with no text to extract, so it has to be sent as pages — and the limit for that is ${formatBytes(MAX_INLINE_BYTES)}.`,
+        },
+        { status: 413 },
+      );
+    }
+
     const { data: row, error: insertError } = await supabase
       .from("attachments")
       .insert({
@@ -136,9 +149,7 @@ export async function POST(request: Request) {
   }
 }
 
-// Only a draft can be taken back. Once a card has sent a file, that file is
-// part of what the card is: node_attachments records the send, and no snapshot
-// of the payload exists to fall back on.
+// Only a draft can be taken back; a sent file is part of what the card is.
 export async function DELETE(request: Request) {
   const user = await currentUser();
   if (!user) {

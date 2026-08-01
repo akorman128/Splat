@@ -9,10 +9,11 @@ import type { Provider } from "@/lib/providers/models";
 import type { ChatStreamEvent, NodeRow, SuggestionRow } from "@/lib/types";
 
 export type SubmitParams = {
-  conversationId: string;
+  conversationId: string | null;
   parentId: string | null;
   contextNodeIds: string[];
   skillIds: string[];
+  attachmentIds: string[];
   prompt: string;
   provider: Provider;
   model: string;
@@ -60,9 +61,11 @@ async function runStream(
     switch (event.type) {
       case "node":
         nodeId = event.node.id;
+        graph.adoptConversation(event.node.conversation_id);
         streams.clear(event.node.id);
         graph.upsertNode(event.node);
         graph.addEdges(event.edges);
+        graph.addAttachments(event.attachments);
         if (createsCard) graph.setFocusNode(event.node.id);
         onNode?.(event.node);
         break;

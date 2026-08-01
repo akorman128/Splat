@@ -1,8 +1,13 @@
 import "server-only";
-import { estimateImageTokens, estimateTokens } from "@/lib/tokens";
+import {
+  PDF_PAGE_TOKEN_ESTIMATE,
+  estimateImageTokens,
+  estimateTokens,
+} from "@/lib/tokens";
 import {
   EMPTY_TEXT_THRESHOLD,
   MAX_EXTRACTED_CHARS,
+  PDF_MIN_CHARS_PER_PAGE,
   type AttachmentKind,
   type ExtractStatus,
 } from "./types";
@@ -17,18 +22,20 @@ export type ExtractResult = {
   height: number | null;
 };
 
-// Extraction happens once, at upload, and never again: the context picker has
-// to price a file in tokens before the prompt is ever sent, and that number
-// cannot exist until the text does. The parsers are loaded on demand so a PNG
-// upload never pays to initialise the PDF engine.
+// The parsers are imported on demand so a PNG upload never pays to initialise
+// the PDF engine.
 
-async function fromPdf(bytes: Uint8Array): Promise<string> {
+// The page count comes back whether or not there was any text, which is what
+// prices a scan the model has to read for itself.
+async function fromPdf(
+  bytes: Uint8Array,
+): Promise<{ text: string; pages: number }> {
   const { extractText } = await import("unpdf");
   // pdf.js takes ownership of the buffer it is handed, so it gets a copy.
-  const { text } = await extractText(new Uint8Array(bytes), {
+  const { text, totalPages } = await extractText(new Uint8Array(bytes), {
     mergePages: true,
   });
-  return text;
+  return { text, pages: totalPages };
 }
 
 async function fromDocx(bytes: Uint8Array): Promise<string> {
@@ -39,9 +46,8 @@ async function fromDocx(bytes: Uint8Array): Promise<string> {
   return value;
 }
 
-// A cell is not a string. read-excel-file hands back Date objects, booleans and
-// numbers, and a formula that returned nothing comes through as null — so every
-// value goes through here or the sheet renders as a wall of [object Object].
+// read-excel-file hands back Date objects, booleans, numbers and nulls, not
+// strings.
 function cellToString(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -74,15 +80,13 @@ const NUL = String.fromCharCode(0);
 function fromText(bytes: Uint8Array): string {
   const text = new TextDecoder("utf-8").decode(bytes);
   // A NUL in the first few KB is the cheapest reliable "this is not text".
-  // Without it, a binary renamed to .txt becomes 2MB of replacement characters.
   if (text.slice(0, 8192).includes(NUL)) {
     throw new Error("This looks like a binary file, not text.");
   }
   return text;
 }
 
-// Never fatal: a dimensionless image is a worse token estimate, not a failed
-// upload.
+// Never fatal: a dimensionless image is a worse estimate, not a failed upload.
 async function measure(
   bytes: Uint8Array,
 ): Promise<{ width: number | null; height: number | null }> {
@@ -113,15 +117,20 @@ export async function extractAttachment(
   }
 
   let raw: string;
+  let pages = 0;
   try {
-    raw =
-      kind === "pdf"
-        ? await fromPdf(bytes)
-        : kind === "document"
+    if (kind === "pdf") {
+      const pdf = await fromPdf(bytes);
+      raw = pdf.text;
+      pages = pdf.pages;
+    } else {
+      raw =
+        kind === "document"
           ? await fromDocx(bytes)
           : kind === "spreadsheet"
             ? await fromXlsx(bytes)
             : fromText(bytes);
+    }
   } catch (err) {
     return {
       status: "failed",
@@ -135,13 +144,18 @@ export async function extractAttachment(
   }
 
   const normalised = raw.replace(/\r\n/g, "\n").trim();
-  if (normalised.length < EMPTY_TEXT_THRESHOLD) {
+  const textless =
+    normalised.length < EMPTY_TEXT_THRESHOLD ||
+    (pages > 0 && normalised.length / pages < PDF_MIN_CHARS_PER_PAGE);
+  if (textless) {
     return {
       status: "empty",
       text: null,
       error: null,
       truncated: false,
-      estTokens: 0,
+      // Zero for everything else: a textless PDF is the one kind still sent, so
+      // it is the only one with a cost to show.
+      estTokens: pages * PDF_PAGE_TOKEN_ESTIMATE,
       width: null,
       height: null,
     };

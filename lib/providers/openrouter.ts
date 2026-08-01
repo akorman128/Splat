@@ -30,15 +30,15 @@ const OUTPUT_RESERVE_TOKENS = 512;
 const MIN_OUTPUT_TOKENS = 256;
 const FOLLOWUPS_MAX_TOKENS = 2000;
 
-// Images are priced off their dimensions by the same estimator the composer
-// shows the user, not off the base64 length, and added after the /4 for the
-// same reason.
+// Images and whole PDFs are priced off the same estimates the composer showed
+// the user, not off their base64 length, and added after the /4 for the same
+// reason.
 function estimatePromptTokens(
   messages: ChatMessage[],
   system?: string,
 ): number {
   let chars = system?.length ?? 0;
-  let imageTokens = 0;
+  let wholeFileTokens = 0;
   for (const message of messages) {
     if (typeof message.content === "string") {
       chars += message.content.length;
@@ -46,11 +46,12 @@ function estimatePromptTokens(
     }
     for (const part of message.content) {
       if (part.type === "text") chars += part.text.length;
-      else imageTokens += estimateImageTokens(part.width, part.height);
+      else if (part.type === "document") wholeFileTokens += part.estTokens;
+      else wholeFileTokens += estimateImageTokens(part.width, part.height);
     }
   }
   const count = messages.length + (system ? 1 : 0);
-  return Math.ceil(chars / 4) + imageTokens + count * 8;
+  return Math.ceil(chars / 4) + wholeFileTokens + count * 8;
 }
 
 // The system prompt is prepended here rather than by the caller, so the budget
@@ -69,16 +70,29 @@ function toChatCompletions(
       }
       return {
         role: "user",
-        content: message.content.map((part) =>
-          part.type === "text"
-            ? { type: "text" as const, text: part.text }
-            : {
-                type: "image_url" as const,
-                image_url: {
-                  url: `data:${part.mediaType};base64,${part.data}`,
-                },
+        content: message.content.map((part) => {
+          if (part.type === "text") {
+            return { type: "text" as const, text: part.text };
+          }
+          // No file-parser plugin declared: OpenRouter hands the PDF straight to
+          // models that read files natively and runs OCR for the rest, which is
+          // exactly the split we want, since only textless PDFs get here.
+          if (part.type === "document") {
+            return {
+              type: "file" as const,
+              file: {
+                filename: part.filename,
+                file_data: `data:application/pdf;base64,${part.data}`,
               },
-        ),
+            };
+          }
+          return {
+            type: "image_url" as const,
+            image_url: {
+              url: `data:${part.mediaType};base64,${part.data}`,
+            },
+          };
+        }),
       };
     },
   );

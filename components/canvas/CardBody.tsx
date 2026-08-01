@@ -7,6 +7,7 @@ import { Loader2, Maximize2, RefreshCw, Trash2 } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { estimateTokens } from "@/lib/tokens";
+import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
 import { SuggestionRail } from "./SuggestionRail";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
@@ -26,9 +27,10 @@ const keepScrollLocal = (element: HTMLDivElement | null) => {
 };
 
 export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
-  const { node, responseText, contextCount, isStreaming, isError } =
+  const { node, responseText, contextCount, attachments, isStreaming, isError } =
     useCardState(nodeId);
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
+  const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
   const setHoveredNode = useGraphStore((s) => s.setHoveredNode);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const readOnly = useGraphStore((s) => s.readOnly);
@@ -110,10 +112,38 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           </p>
         </div>
 
+        {attachments.length > 0 && (
+          // The chips are buttons, so the card must not read the pointer as the
+          // start of a drag — without this, clicking one flings the card.
+          <div
+            className="flex flex-wrap gap-1 border-b bg-muted/20 px-3 py-1.5"
+            onPointerDown={stop}
+          >
+            {attachments.map((attachment) => (
+              <button
+                key={attachment.id}
+                type="button"
+                title={`${attachment.filename} — open the card to see it`}
+                onClick={() => setExpandedNode(nodeId)}
+                className="flex max-w-40 items-center gap-1 rounded border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <AttachmentIcon
+                  kind={attachment.kind}
+                  className="size-2.5 shrink-0"
+                />
+                <span className="truncate">{attachment.filename}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div
           ref={keepScrollLocal}
           className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
-          onPointerDown={stop}
+          onPointerDown={(e) => {
+            stop(e);
+            setSelectedNode(nodeId);
+          }}
         >
           {responseText ? (
             <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto prose-pre:text-xs">

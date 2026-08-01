@@ -2,16 +2,13 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  startTransition,
-  useCallback,
-  useEffect,
-  useOptimistic,
-  useState,
-} from "react";
+import { startTransition, useEffect, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
+import {
+  attachmentObjectPaths,
+  removeAttachmentObjects,
+} from "@/lib/attachments-client";
 import {
   Sidebar,
   SidebarContent,
@@ -73,7 +70,6 @@ export function AppSidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [creating, setCreating] = useState(false);
   const [skillTarget, setSkillTarget] = useState<SkillTarget | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(
     null,
@@ -89,25 +85,6 @@ export function AppSidebar({
     (list: ConversationSummary[], updated: ConversationSummary) =>
       list.map((c) => (c.id === updated.id ? updated : c)),
   );
-
-  const newConversation = useCallback(async () => {
-    setCreating(true);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("conversations")
-      .insert({ title: DEFAULT_CONVERSATION_TITLE })
-      .select("id")
-      .single();
-    setCreating(false);
-    if (error || !data) {
-      toast.error("Could not create conversation", {
-        description: error?.message,
-      });
-      return;
-    }
-    router.push(`/c/${data.id}`);
-    router.refresh();
-  }, [router]);
 
   // A dialog owns the screen while it is open, so leave the keys to it rather
   // than routing or opening a second one behind it.
@@ -125,21 +102,24 @@ export function AppSidebar({
       if (key !== "n" && key !== "s") return;
 
       event.preventDefault();
-      if (key === "s") {
+      if (key === "n") {
+        router.push("/c/new");
+      } else {
         setSkillTarget({ kind: "new" });
-      } else if (!creating) {
-        newConversation();
       }
     }
 
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
-  }, [creating, dialogOpen, newConversation]);
+  }, [dialogOpen, router]);
 
   async function deleteConversation() {
     if (!pendingDelete) return;
     setDeleting(true);
     const supabase = createClient();
+    const paths = await attachmentObjectPaths({
+      conversationId: pendingDelete.id,
+    });
     const { error } = await supabase
       .from("conversations")
       .delete()
@@ -151,6 +131,7 @@ export function AppSidebar({
       });
       return;
     }
+    await removeAttachmentObjects(paths);
     const wasOpen = pathname === `/c/${pendingDelete.id}`;
     setPendingDelete(null);
     if (wasOpen) router.push("/c");
@@ -197,8 +178,8 @@ export function AppSidebar({
         <Button
           size="lg"
           className="mx-2 mb-1"
-          onClick={newConversation}
-          disabled={creating}
+          nativeButton={false}
+          render={<Link href="/c/new" />}
         >
           <Plus className="size-4" />
           New conversation
