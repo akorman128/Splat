@@ -8,6 +8,13 @@ export type ShortcutGroup = { title: string; shortcuts: Shortcut[] };
 
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
+    title: "Starting something new",
+    shortcuts: [
+      { keys: [MOD, "Shift", "N"], label: "Start a new conversation" },
+      { keys: [MOD, "Shift", "S"], label: "Write a new skill" },
+    ],
+  },
+  {
     title: "Cards",
     shortcuts: [
       { keys: [MOD, "O"], label: "Open the hovered card" },

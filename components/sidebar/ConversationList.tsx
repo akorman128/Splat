@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { startTransition, useOptimistic, useState } from "react";
+import { startTransition, useEffect, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -85,6 +85,33 @@ export function AppSidebar({
     (list: ConversationSummary[], updated: ConversationSummary) =>
       list.map((c) => (c.id === updated.id ? updated : c)),
   );
+
+  // A dialog owns the screen while it is open, so leave the keys to it rather
+  // than routing or opening a second one behind it.
+  const dialogOpen =
+    skillTarget !== null || shareTarget !== null || pendingDelete !== null;
+
+  useEffect(() => {
+    if (dialogOpen) return;
+
+    function handle(event: KeyboardEvent) {
+      if (!event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key !== "n" && key !== "s") return;
+
+      event.preventDefault();
+      if (key === "n") {
+        router.push("/c/new");
+      } else {
+        setSkillTarget({ kind: "new" });
+      }
+    }
+
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [dialogOpen, router]);
 
   async function deleteConversation() {
     if (!pendingDelete) return;
