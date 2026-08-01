@@ -2,7 +2,13 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { startTransition, useOptimistic, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useOptimistic,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_CONVERSATION_TITLE } from "@/lib/types";
@@ -84,7 +90,7 @@ export function AppSidebar({
       list.map((c) => (c.id === updated.id ? updated : c)),
   );
 
-  async function newConversation() {
+  const newConversation = useCallback(async () => {
     setCreating(true);
     const supabase = createClient();
     const { data, error } = await supabase
@@ -101,7 +107,34 @@ export function AppSidebar({
     }
     router.push(`/c/${data.id}`);
     router.refresh();
-  }
+  }, [router]);
+
+  // A dialog owns the screen while it is open, so leave the keys to it rather
+  // than routing or opening a second one behind it.
+  const dialogOpen =
+    skillTarget !== null || shareTarget !== null || pendingDelete !== null;
+
+  useEffect(() => {
+    if (dialogOpen) return;
+
+    function handle(event: KeyboardEvent) {
+      if (!event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key !== "n" && key !== "s") return;
+
+      event.preventDefault();
+      if (key === "s") {
+        setSkillTarget({ kind: "new" });
+      } else if (!creating) {
+        newConversation();
+      }
+    }
+
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [creating, dialogOpen, newConversation]);
 
   async function deleteConversation() {
     if (!pendingDelete) return;
