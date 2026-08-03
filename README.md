@@ -8,6 +8,9 @@ cards get sent as context. A linear thread makes you choose between polluting
 your context with a tangent and losing the tangent entirely; on a graph you just
 branch, and pull context from whichever branches turned out to be relevant.
 
+<img width="1512" height="861" alt="Screenshot 2026-08-03 at 12 12 13 PM" src="https://github.com/user-attachments/assets/ac4bfe38-d9e7-4177-a821-e526a040b25e" />
+
+
 **BYOK** — bring your own OpenAI, Anthropic, or OpenRouter key. There's no hosted
 tier. Keys are encrypted at rest and only ever decrypted inside a route handler.
 
