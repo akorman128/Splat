@@ -1,7 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
+import { MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
@@ -64,11 +64,13 @@ export const openaiAdapter: ProviderAdapter = {
     messages,
     system,
   }): AsyncGenerator<StreamEvent> {
+    // No max_output_tokens: OpenAI's model list publishes no per-model ceiling,
+    // and a fixed one is a 400 on every model whose own ceiling is lower than
+    // ours. Left unset, each model stops at its own limit.
     const stream = await client(apiKey).responses.create({
       model,
       input: toResponsesInput(messages),
       stream: true,
-      max_output_tokens: MAX_OUTPUT_TOKENS,
       ...(system ? { instructions: system } : {}),
     });
 
@@ -99,10 +101,10 @@ export const openaiAdapter: ProviderAdapter = {
     yield { type: "usage", ...usage };
   },
 
-  async generateFollowups({ apiKey, prompt, response }) {
-    const call = async (model: string) => {
+  async generateFollowups({ apiKey, prompt, response, model }) {
+    const call = async (target: string) => {
       const res = await client(apiKey).responses.parse({
-        model,
+        model: target,
         input: [{ role: "user", content: followupsPrompt(prompt, response) }],
         text: { format: zodTextFormat(FollowupsSchema, "followups") },
         max_output_tokens: 2000,
@@ -113,11 +115,16 @@ export const openaiAdapter: ProviderAdapter = {
     try {
       return await call(MODELS.openai.utility);
     } catch (err) {
+      // The card's own model, unless that is the one that just failed.
+      const fallback =
+        model && model !== MODELS.openai.utility
+          ? model
+          : MODELS.openai.conversation;
       if (err instanceof OpenAI.NotFoundError) {
         console.warn(
-          `[providers/openai] utility model ${MODELS.openai.utility} unavailable; falling back to ${MODELS.openai.conversation}`,
+          `[providers/openai] utility model ${MODELS.openai.utility} unavailable; falling back to ${fallback}`,
         );
-        return await call(MODELS.openai.conversation);
+        return await call(fallback);
       }
       throw err;
     }

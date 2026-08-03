@@ -39,21 +39,13 @@ import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition, rootPosition } from "@/lib/layout";
 import {
   PROVIDER_LABELS,
-  conversationModelLabel,
   defaultModel,
-  hasModelCatalog,
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
 import { MAX_ATTACHMENTS_PER_TURN } from "@/lib/attachments/types";
 import { modifierLabel } from "@/lib/shortcuts";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
-
-function providerLabel(provider: Provider): string {
-  return hasModelCatalog(provider)
-    ? PROVIDER_LABELS[provider]
-    : conversationModelLabel(provider);
-}
 
 // Ticks whose owning card is gone are excluded: they have no row left to send,
 // and the route answers the whole list with a 400.
@@ -661,17 +653,19 @@ export function Composer({
           }}
         >
           <SelectTrigger size="sm" className="w-auto text-xs">
-            <SelectValue>{provider ? providerLabel(provider) : "Model"}</SelectValue>
+            <SelectValue>
+              {provider ? PROVIDER_LABELS[provider] : "Provider"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {connectedProviders.map((p) => (
               <SelectItem key={p} value={p} className="text-xs">
-                {providerLabel(p)}
+                {PROVIDER_LABELS[p]}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {provider && hasModelCatalog(provider) && (
+        {provider && (
           <ModelPicker
             provider={provider}
             value={model ?? defaultModel(provider)}

@@ -35,15 +35,6 @@ export const PROVIDER_KEY_URLS: Record<Provider, string> = {
   openrouter: "https://openrouter.ai/settings/keys",
 };
 
-export const CATALOG_PROVIDERS = ["openrouter"] as const;
-export type CatalogProvider = (typeof CATALOG_PROVIDERS)[number];
-
-export function hasModelCatalog(
-  provider: Provider,
-): provider is CatalogProvider {
-  return (CATALOG_PROVIDERS as readonly Provider[]).includes(provider);
-}
-
 export function defaultModel(provider: Provider): string {
   return MODELS[provider].conversation;
 }
@@ -61,10 +52,6 @@ export type CatalogModel = {
   // might route to.
   supportsImages: boolean;
 };
-
-export function conversationModelLabel(provider: Provider): string {
-  return `${PROVIDER_LABELS[provider]} · ${defaultModel(provider)}`;
-}
 
 export function isProvider(value: string): value is Provider {
   return (PROVIDERS as readonly string[]).includes(value);

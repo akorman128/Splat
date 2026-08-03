@@ -2,11 +2,21 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
+import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 function client(apiKey: string): Anthropic {
   return new Anthropic({ apiKey });
+}
+
+// max_tokens is required and every model has its own ceiling, so asking for our
+// own limit is a 400 on any model whose ceiling is lower. A catalogue we could
+// not reach leaves the limit where it was.
+async function outputBudget(apiKey: string, model: string): Promise<number> {
+  const entry = await catalogEntry("anthropic", model, apiKey);
+  if (!entry?.maxOutputTokens) return MAX_OUTPUT_TOKENS;
+  return Math.min(MAX_OUTPUT_TOKENS, entry.maxOutputTokens);
 }
 
 function toAnthropic(messages: ChatMessage[]): Anthropic.MessageParam[] {
@@ -71,7 +81,7 @@ export const anthropicAdapter: ProviderAdapter = {
   }): AsyncGenerator<StreamEvent> {
     const stream = client(apiKey).messages.stream({
       model,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: await outputBudget(apiKey, model),
       messages: toAnthropic(messages),
       ...(system ? { system } : {}),
     });
@@ -115,10 +125,10 @@ export const anthropicAdapter: ProviderAdapter = {
     };
   },
 
-  async generateFollowups({ apiKey, prompt, response }) {
-    const call = async (model: string) => {
+  async generateFollowups({ apiKey, prompt, response, model }) {
+    const call = async (target: string) => {
       const res = await client(apiKey).messages.parse({
-        model,
+        model: target,
         max_tokens: 1000,
         output_config: { format: zodOutputFormat(FollowupsSchema) },
         messages: [
@@ -131,11 +141,16 @@ export const anthropicAdapter: ProviderAdapter = {
     try {
       return await call(MODELS.anthropic.utility);
     } catch (err) {
+      // The card's own model, unless that is the one that just failed.
+      const fallback =
+        model && model !== MODELS.anthropic.utility
+          ? model
+          : MODELS.anthropic.conversation;
       if (err instanceof Anthropic.NotFoundError) {
         console.warn(
-          `[providers/anthropic] utility model ${MODELS.anthropic.utility} unavailable; falling back to ${MODELS.anthropic.conversation}`,
+          `[providers/anthropic] utility model ${MODELS.anthropic.utility} unavailable; falling back to ${fallback}`,
         );
-        return await call(MODELS.anthropic.conversation);
+        return await call(fallback);
       }
       throw err;
     }

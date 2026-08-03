@@ -3,12 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { currentUser } from "@/lib/supabase/dal";
 import { decryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
-import {
-  MODELS,
-  hasModelCatalog,
-  isProvider,
-  type Provider,
-} from "@/lib/providers/models";
+import { isProvider, type Provider } from "@/lib/providers/models";
 import { catalogEntry, isKnownCatalogModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
 import { validateAttachmentSelection } from "@/lib/graph/attachment-selection";
@@ -104,9 +99,9 @@ async function resolveApiKey(
 async function imagesAllowed(
   provider: Provider,
   model: string,
+  apiKey: string,
 ): Promise<boolean> {
-  if (!hasModelCatalog(provider)) return true;
-  const entry = await catalogEntry(provider, model);
+  const entry = await catalogEntry(provider, model, apiKey);
   return entry?.supportsImages ?? true;
 }
 
@@ -178,15 +173,6 @@ export async function POST(request: Request) {
       if (!nextPrompt || !isProvider(nextProvider) || !nextModel) {
         return NextResponse.json({ error: "Invalid request" }, { status: 400 });
       }
-      const modelAllowed = hasModelCatalog(nextProvider)
-        ? await isKnownCatalogModel(nextProvider, nextModel)
-        : nextModel === MODELS[nextProvider].conversation;
-      if (!modelAllowed) {
-        return NextResponse.json(
-          { error: `Unknown model for ${nextProvider}: ${nextModel}` },
-          { status: 400 },
-        );
-      }
       rerunFields = {
         prompt: nextPrompt,
         provider: nextProvider,
@@ -238,6 +224,18 @@ export async function POST(request: Request) {
     }
     apiKey = rerunKey.apiKey;
 
+    // Only a regenerate can change the model; a retry replays what the card
+    // already holds, and the catalogue is read with the key that will send it.
+    if (
+      regenerating &&
+      !(await isKnownCatalogModel(rerunProvider, rerunModel, apiKey))
+    ) {
+      return NextResponse.json(
+        { error: `Unknown model for ${rerunProvider}: ${rerunModel}` },
+        { status: 400 },
+      );
+    }
+
     // Omitting skillIds on a regenerate keeps whatever the card already
     // carries; sending them (even empty) replaces the set.
     const rerunSkillIds =
@@ -256,7 +254,7 @@ export async function POST(request: Request) {
 
     if (
       turnAttachments.some((a) => a.kind === "image") &&
-      !(await imagesAllowed(rerunProvider, rerunModel))
+      !(await imagesAllowed(rerunProvider, rerunModel, apiKey))
     ) {
       return NextResponse.json(
         {
@@ -328,15 +326,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
     const contextNodeIds = [...new Set(rawContextNodeIds)];
-    const modelAllowed = hasModelCatalog(provider)
-      ? await isKnownCatalogModel(provider, model)
-      : model === MODELS[provider].conversation;
-    if (!modelAllowed) {
-      return NextResponse.json(
-        { error: `Unknown model for ${provider}: ${model}` },
-        { status: 400 },
-      );
-    }
 
     if (conversationId) {
       const { data: conversation } = await supabase
@@ -410,6 +399,15 @@ export async function POST(request: Request) {
     }
     apiKey = newKey.apiKey;
 
+    // After the key, because the catalogue that answers this is the one that
+    // key can reach.
+    if (!(await isKnownCatalogModel(provider, model, apiKey))) {
+      return NextResponse.json(
+        { error: `Unknown model for ${provider}: ${model}` },
+        { status: 400 },
+      );
+    }
+
     const attachmentIds = [
       ...new Set(
         (Array.isArray(body.attachmentIds) ? body.attachmentIds : []).filter(
@@ -460,7 +458,7 @@ export async function POST(request: Request) {
 
       if (
         turnAttachments.some((a) => a.kind === "image") &&
-        !(await imagesAllowed(provider, model))
+        !(await imagesAllowed(provider, model, apiKey))
       ) {
         return NextResponse.json(
           {
