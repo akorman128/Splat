@@ -5,9 +5,23 @@ import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import { estimateImageTokens } from "@/lib/tokens";
+import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
+
+// `reasoning` is OpenRouter's own addition to the OpenAI body, so it is absent
+// from the SDK's types: https://openrouter.ai/docs/use-cases/reasoning-tokens
+type OpenRouterStreamBody = OpenAI.ChatCompletionCreateParamsStreaming & {
+  reasoning?: { effort: "none" | ThinkingLevel };
+};
+
+function reasoningParams(
+  level: ThinkingLevel | null,
+): Pick<OpenRouterStreamBody, "reasoning"> {
+  if (!level) return {};
+  return { reasoning: { effort: level === "off" ? "none" : level } };
+}
 
 function attributionHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -223,15 +237,18 @@ export const openrouterAdapter: ProviderAdapter = {
     model,
     messages,
     system,
+    thinking,
   }): AsyncGenerator<StreamEvent> {
-    const stream = await client(apiKey).chat.completions.create({
+    const body: OpenRouterStreamBody = {
       model,
       messages: toChatCompletions(messages, system),
       stream: true,
       stream_options: { include_usage: true },
       max_tokens:
         (await outputBudget(apiKey, model, messages, system)) ?? undefined,
-    });
+      ...reasoningParams(thinking ?? null),
+    };
+    const stream = await client(apiKey).chat.completions.create(body);
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {
       promptTokens: null,

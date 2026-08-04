@@ -260,6 +260,7 @@ export type Database = {
           provider: string
           response: string
           status: string
+          thinking_level: string | null
           title: string | null
           user_id: string
         }
@@ -280,6 +281,7 @@ export type Database = {
           provider: string
           response?: string
           status?: string
+          thinking_level?: string | null
           title?: string | null
           user_id?: string
         }
@@ -300,6 +302,7 @@ export type Database = {
           provider?: string
           response?: string
           status?: string
+          thinking_level?: string | null
           title?: string | null
           user_id?: string
         }

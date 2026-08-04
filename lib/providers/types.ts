@@ -1,5 +1,6 @@
 import "server-only";
 import type { Provider } from "./models";
+import type { ThinkingLevel } from "./thinking";
 
 export type { Provider };
 
@@ -53,6 +54,7 @@ export interface ProviderAdapter {
     model: string;
     messages: ChatMessage[];
     system?: string;
+    thinking?: ThinkingLevel | null;
   }): AsyncGenerator<StreamEvent>;
 
   generateFollowups(opts: {

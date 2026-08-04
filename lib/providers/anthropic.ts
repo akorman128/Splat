@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 function client(apiKey: string): Anthropic {
@@ -17,6 +18,19 @@ async function outputBudget(apiKey: string, model: string): Promise<number> {
   const entry = await catalogEntry("anthropic", model, apiKey);
   if (!entry?.maxOutputTokens) return MAX_OUTPUT_TOKENS;
   return Math.min(MAX_OUTPUT_TOKENS, entry.maxOutputTokens);
+}
+
+type ThinkingParams = {
+  thinking?: Anthropic.ThinkingConfigParam;
+  output_config?: Anthropic.OutputConfig;
+};
+
+// Adaptive rather than a budget_tokens config, which is a 400 from Opus 4.7
+// onwards; on the older models still in the picker, effort is a 400 of its own.
+function thinkingParams(level: ThinkingLevel | null): ThinkingParams {
+  if (!level) return {};
+  if (level === "off") return { thinking: { type: "disabled" } };
+  return { thinking: { type: "adaptive" }, output_config: { effort: level } };
 }
 
 function toAnthropic(messages: ChatMessage[]): Anthropic.MessageParam[] {
@@ -78,12 +92,14 @@ export const anthropicAdapter: ProviderAdapter = {
     model,
     messages,
     system,
+    thinking,
   }): AsyncGenerator<StreamEvent> {
     const stream = client(apiKey).messages.stream({
       model,
       max_tokens: await outputBudget(apiKey, model),
       messages: toAnthropic(messages),
       ...(system ? { system } : {}),
+      ...thinkingParams(thinking ?? null),
     });
 
     for await (const event of stream) {

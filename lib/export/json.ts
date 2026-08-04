@@ -27,6 +27,7 @@ export function toJson({
         response: node.response,
         provider: node.provider,
         model: node.model,
+        thinkingLevel: node.thinking_level,
         status: node.status,
         errorMessage: node.error_message,
         promptTokens: node.prompt_tokens,

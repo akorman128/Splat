@@ -43,6 +43,7 @@ import {
   isProvider,
   type Provider,
 } from "@/lib/providers/models";
+import { toThinkingLevel, type ThinkingLevel } from "@/lib/providers/thinking";
 import { MAX_ATTACHMENTS_PER_TURN } from "@/lib/attachments/types";
 import { modifierLabel } from "@/lib/shortcuts";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
@@ -141,6 +142,8 @@ export function Composer({
   const setProvider = useComposerStore((s) => s.setProvider);
   const model = useComposerStore((s) => s.model);
   const setModel = useComposerStore((s) => s.setModel);
+  const thinking = useComposerStore((s) => s.thinking);
+  const setThinking = useComposerStore((s) => s.setThinking);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const parent = useGraphStore((s) =>
@@ -221,6 +224,7 @@ export function Composer({
   const parkedPick = useRef<{
     provider: Provider | null;
     model: string | null;
+    thinking: ThinkingLevel | null;
   } | null>(null);
 
   useEffect(() => {
@@ -231,12 +235,17 @@ export function Composer({
         parkedPick.current = null;
         composer.setProvider(parked.provider);
         if (parked.model) composer.setModel(parked.model);
+        composer.setThinking(parked.thinking);
       }
       return;
     }
 
     if (!parkedPick.current) {
-      parkedPick.current = { provider: composer.provider, model: composer.model };
+      parkedPick.current = {
+        provider: composer.provider,
+        model: composer.model,
+        thinking: composer.thinking,
+      };
     }
     const target = useGraphStore.getState().nodes[regenerateNodeId];
     if (
@@ -247,6 +256,9 @@ export function Composer({
       composer.setProvider(target.provider);
       composer.setModel(target.model);
     }
+    // Outside the guard above: a level restores even when the card's provider
+    // is gone and its model cannot.
+    if (target) composer.setThinking(toThinkingLevel(target.thinking_level));
 
     const field = textareaRef.current;
     if (field) {
@@ -281,6 +293,7 @@ export function Composer({
           prompt: text,
           provider,
           model: model ?? defaultModel(provider),
+          thinking,
           skillIds: attached.map((s) => s.id),
         },
         onNode: (node) => {
@@ -352,6 +365,7 @@ export function Composer({
           prompt: text,
           provider,
           model: model ?? defaultModel(provider),
+          thinking,
           canvasX: position.x,
           canvasY: position.y,
         },
@@ -620,7 +634,7 @@ export function Composer({
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {attachable && (
           <>
             <input
@@ -670,6 +684,8 @@ export function Composer({
             provider={provider}
             value={model ?? defaultModel(provider)}
             onChange={setModel}
+            thinking={thinking}
+            onThinkingChange={setThinking}
           />
         )}
         <Button
@@ -687,7 +703,7 @@ export function Composer({
           ) : (
             <>
               <ArrowUp className="size-4" />
-              Send
+              <span className="max-sm:sr-only">Send</span>
             </>
           )}
         </Button>
