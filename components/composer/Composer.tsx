@@ -326,7 +326,6 @@ export function Composer({
     }
 
     const graph = useGraphStore.getState();
-    const draft = graph.conversationId === null;
     const allNodes = Object.values(graph.nodes);
     const parentNode = graph.selectedNodeId
       ? graph.nodes[graph.selectedNodeId]
@@ -369,15 +368,11 @@ export function Composer({
           canvasX: position.x,
           canvasY: position.y,
         },
-        onNode: (node) => {
+        onNode: () => {
           setSending(false);
           // Let go rather than delete — the card owns them now.
           useAttachmentStore.getState().released(attachmentIds);
           setCheckedAttachments({});
-          if (draft) {
-            router.replace(`/c/${node.conversation_id}`);
-            router.refresh();
-          }
         },
         onTitled: (_nodeId, isRoot) => {
           if (isRoot) router.refresh();

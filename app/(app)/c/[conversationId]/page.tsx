@@ -1,13 +1,8 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ConversationView } from "@/components/canvas/ConversationView";
+import { GraphHydrator } from "@/components/canvas/GraphHydrator";
 import { CARD_ATTACHMENT_COLUMNS } from "@/lib/attachments/types";
-import type {
-  CardAttachment,
-  CredentialSummary,
-  SkillSummary,
-} from "@/lib/types";
-import type { Provider } from "@/lib/providers/models";
+import type { CardAttachment } from "@/lib/types";
 
 export default async function ConversationPage({
   params,
@@ -24,16 +19,11 @@ export default async function ConversationPage({
     .maybeSingle();
   if (!conversation) notFound();
 
-  const [{ data: nodes }, { data: credentials }, { data: skills }] =
-    await Promise.all([
-      supabase
-        .from("nodes")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at"),
-      supabase.from("provider_creds").select("provider, key_last4"),
-      supabase.from("skills").select("id, name").order("name"),
-    ]);
+  const { data: nodes } = await supabase
+    .from("nodes")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at");
 
   const nodeIds = (nodes ?? []).map((n) => n.id);
   const [{ data: edges }, { data: suggestions }, { data: attachments }] =
@@ -50,17 +40,12 @@ export default async function ConversationPage({
       : [{ data: [] }, { data: [] }, { data: [] }];
 
   return (
-    <ConversationView
+    <GraphHydrator
       conversationId={conversationId}
       nodes={nodes ?? []}
       edges={edges ?? []}
       suggestions={suggestions ?? []}
       attachments={(attachments ?? []) as CardAttachment[]}
-      credentials={(credentials ?? []).map((c) => ({
-        provider: c.provider as Provider,
-        key_last4: c.key_last4,
-      })) satisfies CredentialSummary[]}
-      skills={(skills ?? []) satisfies SkillSummary[]}
     />
   );
 }
