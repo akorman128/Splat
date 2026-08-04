@@ -22,6 +22,7 @@ import {
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { neighboursOf } from "@/lib/graph/neighbours";
+import { thinkingSummary } from "@/lib/providers/thinking";
 import { CardAttachmentList } from "./CardAttachmentList";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
@@ -135,6 +136,12 @@ export function ExpandedCardOverlay() {
         </div>
         <div className="flex items-center gap-2 border-t px-6 py-2 text-xs text-muted-foreground">
           <span>{node.model}</span>
+          {thinkingSummary(node.thinking_level) && (
+            <>
+              <span>·</span>
+              <span>{thinkingSummary(node.thinking_level)}</span>
+            </>
+          )}
           <span>·</span>
           <span>
             {node.prompt_tokens != null && node.completion_tokens != null

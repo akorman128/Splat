@@ -7,6 +7,7 @@ import { Loader2, Maximize2, RefreshCw, Trash2 } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { estimateTokens } from "@/lib/tokens";
+import { thinkingSummary } from "@/lib/providers/thinking";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
 import { SuggestionRail } from "./SuggestionRail";
 import { InterruptedNotice } from "./InterruptedNotice";
@@ -166,6 +167,14 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
 
         <div className="flex items-center gap-2 border-t px-3 py-1.5 text-[10px] text-muted-foreground">
           <span className="truncate">{node.model}</span>
+          {thinkingSummary(node.thinking_level) && (
+            <>
+              <span>·</span>
+              <span className="truncate">
+                {thinkingSummary(node.thinking_level)}
+              </span>
+            </>
+          )}
           <span>·</span>
           <span>
             {node.prompt_tokens != null && node.completion_tokens != null

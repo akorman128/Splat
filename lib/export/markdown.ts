@@ -1,4 +1,5 @@
 import { topoOrder } from "@/lib/graph/topo-order";
+import { thinkingSummary } from "@/lib/providers/thinking";
 import type { NodeRow } from "@/lib/types";
 import type { ConversationExport } from "./conversation";
 
@@ -54,6 +55,8 @@ export function toMarkdown({
     if (!node) continue;
 
     const meta = [node.model];
+    const thinking = thinkingSummary(node.thinking_level);
+    if (thinking) meta.push(thinking);
     meta.push(
       node.parent_id && byId.has(node.parent_id)
         ? `branches from ${reference(node.parent_id)}`

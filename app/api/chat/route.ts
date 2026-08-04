@@ -4,6 +4,11 @@ import { currentUser } from "@/lib/supabase/dal";
 import { decryptSecret } from "@/lib/crypto";
 import { getAdapter } from "@/lib/providers";
 import { isProvider, type Provider } from "@/lib/providers/models";
+import {
+  isThinkingLevel,
+  toThinkingLevel,
+  type ThinkingLevel,
+} from "@/lib/providers/thinking";
 import { catalogEntry, isKnownCatalogModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
 import { validateAttachmentSelection } from "@/lib/graph/attachment-selection";
@@ -45,6 +50,7 @@ type NewChatBody = {
   prompt: string;
   provider: string;
   model: string;
+  thinking?: string | null;
   canvasX?: number;
   canvasY?: number;
 };
@@ -56,6 +62,7 @@ type RegenerateBody = {
   prompt?: string;
   provider?: string;
   model?: string;
+  thinking?: string | null;
   skillIds?: string[];
 };
 
@@ -92,6 +99,18 @@ async function resolveApiKey(
       error: `Stored ${provider} key could not be decrypted. Re-add it in Settings.`,
     };
   }
+}
+
+// An absent field is not the same as a null one: absent leaves the card on
+// whatever level it already carries, null clears it back to the provider's own
+// default. Anything else has to name a level, or the send is a 400 rather than
+// a card quietly sent at a level nobody picked.
+function readThinkingLevel(
+  value: unknown,
+): { ok: true; level: ThinkingLevel | null } | { ok: false } {
+  if (value === null) return { ok: true, level: null };
+  if (isThinkingLevel(value)) return { ok: true, level: value };
+  return { ok: false };
 }
 
 // Advisory for openrouter/auto, which reports the union of everything it might
@@ -163,6 +182,7 @@ export async function POST(request: Request) {
       prompt?: string;
       provider?: string;
       model?: string;
+      thinking_level?: string | null;
       prompt_tokens?: null;
       completion_tokens?: null;
     } = {};
@@ -180,6 +200,16 @@ export async function POST(request: Request) {
         prompt_tokens: null,
         completion_tokens: null,
       };
+      if (body.thinking !== undefined) {
+        const level = readThinkingLevel(body.thinking);
+        if (!level.ok) {
+          return NextResponse.json(
+            { error: "Invalid request" },
+            { status: 400 },
+          );
+        }
+        rerunFields.thinking_level = level.level;
+      }
     }
 
     const [nodesRes, edgesRes, ownEdgesRes, attachmentsRes] = await Promise.all([
@@ -323,6 +353,10 @@ export async function POST(request: Request) {
       !model ||
       !Array.isArray(rawContextNodeIds)
     ) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
+    const thinking = readThinkingLevel(body.thinking ?? null);
+    if (!thinking.ok) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
     const contextNodeIds = [...new Set(rawContextNodeIds)];
@@ -514,6 +548,7 @@ export async function POST(request: Request) {
         prompt: prompt.trim(),
         provider,
         model,
+        thinking_level: thinking.level,
         status: "streaming",
         canvas_x: typeof body.canvasX === "number" ? body.canvasX : 0,
         canvas_y: typeof body.canvasY === "number" ? body.canvasY : 0,
@@ -683,6 +718,9 @@ export async function POST(request: Request) {
           model: node.model,
           messages,
           system,
+          // Read back off the row, so a retry replays the level the card was
+          // sent at rather than one the request happens to be carrying.
+          thinking: toThinkingLevel(node.thinking_level),
         })) {
           if (cancelled) {
             throw new Error("Generation interrupted: connection closed");

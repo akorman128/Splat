@@ -3,10 +3,20 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MODELS } from "./models";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 function client(apiKey: string): OpenAI {
   return new OpenAI({ apiKey });
+}
+
+// Sent only when a level was asked for: a model with no reasoning stage answers
+// the parameter itself with a 400, and the picker lists those too.
+function reasoningParams(
+  level: ThinkingLevel | null,
+): { reasoning?: OpenAI.Reasoning } {
+  if (!level) return {};
+  return { reasoning: { effort: level === "off" ? "none" : level } };
 }
 
 function toResponsesInput(
@@ -63,6 +73,7 @@ export const openaiAdapter: ProviderAdapter = {
     model,
     messages,
     system,
+    thinking,
   }): AsyncGenerator<StreamEvent> {
     // No max_output_tokens: OpenAI's model list publishes no per-model ceiling,
     // and a fixed one is a 400 on every model whose own ceiling is lower than
@@ -72,6 +83,7 @@ export const openaiAdapter: ProviderAdapter = {
       input: toResponsesInput(messages),
       stream: true,
       ...(system ? { instructions: system } : {}),
+      ...reasoningParams(thinking ?? null),
     });
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {

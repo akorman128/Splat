@@ -1,5 +1,6 @@
 import "server-only";
 import type { Provider } from "./models";
+import type { ThinkingLevel } from "./thinking";
 
 export type { Provider };
 
@@ -53,6 +54,10 @@ export interface ProviderAdapter {
     model: string;
     messages: ChatMessage[];
     system?: string;
+    // Null asks for nothing, leaving each provider on its own default. Every
+    // adapter has to treat it that way: it is the only setting a model without
+    // a reasoning stage accepts.
+    thinking?: ThinkingLevel | null;
   }): AsyncGenerator<StreamEvent>;
 
   generateFollowups(opts: {

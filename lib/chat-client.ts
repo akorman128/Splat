@@ -6,6 +6,7 @@ import { useStreamStore } from "@/lib/store/stream-store";
 import { apiFetch, apiStream, postJson } from "@/lib/query/api";
 import { queryKeys } from "@/lib/query/keys";
 import type { Provider } from "@/lib/providers/models";
+import type { ThinkingLevel } from "@/lib/providers/thinking";
 import type { ChatStreamEvent, NodeRow, SuggestionRow } from "@/lib/types";
 
 export type SubmitParams = {
@@ -17,6 +18,7 @@ export type SubmitParams = {
   prompt: string;
   provider: Provider;
   model: string;
+  thinking: ThinkingLevel | null;
   canvasX: number;
   canvasY: number;
 };
@@ -26,6 +28,9 @@ export type RegenerateParams = {
   prompt: string;
   provider: Provider;
   model: string;
+  // Sent on every regenerate, null included: omitting it would leave the card
+  // on the level it was made with, which is not what the composer is showing.
+  thinking: ThinkingLevel | null;
   skillIds: string[];
 };
 

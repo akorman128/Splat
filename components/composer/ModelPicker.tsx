@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/query/api";
 import { queryKeys } from "@/lib/query/keys";
 import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/providers/models";
+import { THINKING_LABELS, type ThinkingLevel } from "@/lib/providers/thinking";
+import { ThinkingPicker } from "./ThinkingPicker";
 import { formatTokens } from "@/lib/tokens";
 
 const MAX_ROWS = 80;
@@ -52,10 +54,14 @@ export function ModelPicker({
   provider,
   value,
   onChange,
+  thinking,
+  onThinkingChange,
 }: {
   provider: Provider;
   value: string;
   onChange: (modelId: string) => void;
+  thinking: ThinkingLevel | null;
+  onThinkingChange: (level: ThinkingLevel | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -100,7 +106,12 @@ export function ModelPicker({
         className="min-w-0 text-xs font-normal"
         onClick={() => setOpen(true)}
       >
-        <span className="max-w-48 truncate">{value}</span>
+        <span className="min-w-0 max-w-48 truncate">{value}</span>
+        {thinking && (
+          <span className="shrink-0 text-muted-foreground">
+            · {THINKING_LABELS[thinking]}
+          </span>
+        )}
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </Button>
 
@@ -193,6 +204,8 @@ export function ModelPicker({
               </div>
             )}
           </ScrollArea>
+
+          <ThinkingPicker value={thinking} onChange={onThinkingChange} />
         </DialogContent>
       </Dialog>
     </>
