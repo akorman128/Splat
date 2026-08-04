@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -76,6 +76,21 @@ export function ExpandedCardOverlay() {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [expandedNodeId]);
 
+  const promptRef = useRef<HTMLParagraphElement>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptClamped, setPromptClamped] = useState(false);
+  const [lastExpandedId, setLastExpandedId] = useState(expandedNodeId);
+  if (expandedNodeId !== lastExpandedId) {
+    setLastExpandedId(expandedNodeId);
+    setPromptOpen(false);
+  }
+  // Only measure while clamped: expanded, the paragraph always fits itself.
+  useLayoutEffect(() => {
+    const prompt = promptRef.current;
+    if (!prompt || promptOpen) return;
+    setPromptClamped(prompt.scrollHeight > prompt.clientHeight + 1);
+  }, [node?.prompt, promptOpen]);
+
   const expandedNodeMissing = expandedNodeId !== null && !node;
   useEffect(() => {
     if (expandedNodeMissing) setExpandedNode(null);
@@ -107,9 +122,25 @@ export function ExpandedCardOverlay() {
         </div>
         <DialogHeader className="border-b py-4 pr-44 pl-6">
           <DialogTitle>{node.title ?? "Untitled"}</DialogTitle>
-          <DialogDescription className="whitespace-pre-wrap text-left">
+          <DialogDescription
+            ref={promptRef}
+            className={
+              promptOpen
+                ? "max-h-56 overflow-y-auto whitespace-pre-wrap text-left"
+                : "line-clamp-3 whitespace-pre-wrap text-left"
+            }
+          >
             {node.prompt}
           </DialogDescription>
+          {promptClamped && (
+            <button
+              type="button"
+              onClick={() => setPromptOpen((open) => !open)}
+              className="w-fit text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              {promptOpen ? "Show less" : "Show more"}
+            </button>
+          )}
         </DialogHeader>
         {attachments.length > 0 && (
           <div className="border-b px-6 py-3">
