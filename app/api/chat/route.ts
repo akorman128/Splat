@@ -101,10 +101,8 @@ async function resolveApiKey(
   }
 }
 
-// An absent field is not the same as a null one: absent leaves the card on
-// whatever level it already carries, null clears it back to the provider's own
-// default. Anything else has to name a level, or the send is a 400 rather than
-// a card quietly sent at a level nobody picked.
+// Absent leaves the card on the level it already carries; null clears it back
+// to the provider default.
 function readThinkingLevel(
   value: unknown,
 ): { ok: true; level: ThinkingLevel | null } | { ok: false } {
@@ -718,8 +716,6 @@ export async function POST(request: Request) {
           model: node.model,
           messages,
           system,
-          // Read back off the row, so a retry replays the level the card was
-          // sent at rather than one the request happens to be carrying.
           thinking: toThinkingLevel(node.thinking_level),
         })) {
           if (cancelled) {

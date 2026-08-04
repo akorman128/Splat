@@ -25,10 +25,8 @@ type ThinkingParams = {
   output_config?: Anthropic.OutputConfig;
 };
 
-// Adaptive thinking with an effort hint is the shape current Claude models take
-// — a budget_tokens thinking config is a 400 from Opus 4.7 onwards. Asking for
-// nothing sends neither field, which is what keeps the older models in the
-// picker reachable: effort is a 400 of its own there.
+// Adaptive rather than a budget_tokens config, which is a 400 from Opus 4.7
+// onwards; on the older models still in the picker, effort is a 400 of its own.
 function thinkingParams(level: ThinkingLevel | null): ThinkingParams {
   if (!level) return {};
   if (level === "off") return { thinking: { type: "disabled" } };

@@ -256,9 +256,8 @@ export function Composer({
       composer.setProvider(target.provider);
       composer.setModel(target.model);
     }
-    // Outside the guard above: a level means the same thing on every provider,
-    // so the card's own is worth restoring even when its provider is no longer
-    // connected and the model cannot be.
+    // Outside the guard above: a level restores even when the card's provider
+    // is gone and its model cannot.
     if (target) composer.setThinking(toThinkingLevel(target.thinking_level));
 
     const field = textareaRef.current;
@@ -704,8 +703,6 @@ export function Composer({
           ) : (
             <>
               <ArrowUp className="size-4" />
-              {/* Still read aloud on a phone, just not drawn: the arrow is the
-                  whole button there, and the row has no width to spare. */}
               <span className="max-sm:sr-only">Send</span>
             </>
           )}

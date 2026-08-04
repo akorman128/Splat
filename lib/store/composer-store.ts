@@ -7,7 +7,6 @@ import type { ThinkingLevel } from "@/lib/providers/thinking";
 type ComposerState = {
   provider: Provider | null;
   model: string | null;
-  // Null is a choice, not a missing one: it sends no thinking parameter at all.
   thinking: ThinkingLevel | null;
   regenerateNodeId: string | null;
   setProvider(provider: Provider | null): void;
@@ -27,8 +26,8 @@ export const useComposerStore = create<ComposerState>((set) => ({
   setModel(model) {
     set({ model });
   },
-  // Deliberately survives a provider change: the levels mean the same thing on
-  // all three, so switching provider is no reason to forget the pick.
+  // Survives a provider change, unlike the model: the levels mean the same
+  // thing on all three.
   setThinking(thinking) {
     set({ thinking });
   },

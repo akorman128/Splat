@@ -16,8 +16,6 @@ type OpenRouterStreamBody = OpenAI.ChatCompletionCreateParamsStreaming & {
   reasoning?: { effort: "none" | ThinkingLevel };
 };
 
-// OpenRouter normalises effort across every model it routes to, "none" included
-// — but only for models that reason at all, so nothing is sent without a level.
 function reasoningParams(
   level: ThinkingLevel | null,
 ): Pick<OpenRouterStreamBody, "reasoning"> {

@@ -28,8 +28,6 @@ export type RegenerateParams = {
   prompt: string;
   provider: Provider;
   model: string;
-  // Sent on every regenerate, null included: omitting it would leave the card
-  // on the level it was made with, which is not what the composer is showing.
   thinking: ThinkingLevel | null;
   skillIds: string[];
 };

@@ -10,8 +10,6 @@ function client(apiKey: string): OpenAI {
   return new OpenAI({ apiKey });
 }
 
-// Sent only when a level was asked for: a model with no reasoning stage answers
-// the parameter itself with a 400, and the picker lists those too.
 function reasoningParams(
   level: ThinkingLevel | null,
 ): { reasoning?: OpenAI.Reasoning } {

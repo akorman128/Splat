@@ -8,15 +8,11 @@ import {
   type ThinkingLevel,
 } from "@/lib/providers/thinking";
 
-// Null leads, because it is the default rather than the absence of one.
 const OPTIONS: { level: ThinkingLevel | null; label: string }[] = [
   { level: null, label: "Auto" },
   ...THINKING_LEVELS.map((level) => ({ level, label: THINKING_LABELS[level] })),
 ];
 
-// Lives inside the model dialog rather than beside it: the two are one choice
-// on the composer's only crowded row, and a sixth control there wraps the row
-// off the screen on a phone.
 export function ThinkingPicker({
   value,
   onChange,

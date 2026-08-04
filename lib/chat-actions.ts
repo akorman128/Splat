@@ -68,8 +68,6 @@ export function useSubmitSuggestion() {
           prompt: suggestion.text,
           provider,
           model: model ?? defaultModel(provider),
-          // From the composer, like the provider and model beside it — a
-          // suggestion is sent with whatever the prompt box is set to now.
           thinking,
           canvasX: position.x,
           canvasY: position.y,
