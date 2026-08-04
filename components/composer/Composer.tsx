@@ -704,7 +704,9 @@ export function Composer({
           ) : (
             <>
               <ArrowUp className="size-4" />
-              Send
+              {/* Still read aloud on a phone, just not drawn: the arrow is the
+                  whole button there, and the row has no width to spare. */}
+              <span className="max-sm:sr-only">Send</span>
             </>
           )}
         </Button>
