@@ -39,6 +39,9 @@ export type ChatMessage =
 
 export type StreamEvent =
   | { type: "delta"; text: string }
+  // A source the model actually cited, not everything the search turned up.
+  // Emitted before the usage event, in the order the answer cited them.
+  | { type: "citation"; title: string | null; url: string }
   | { type: "usage"; promptTokens: number | null; completionTokens: number | null };
 
 export type StructuredFollowups = {
@@ -55,6 +58,7 @@ export interface ProviderAdapter {
     messages: ChatMessage[];
     system?: string;
     thinking?: ThinkingLevel | null;
+    webSearch?: boolean;
   }): AsyncGenerator<StreamEvent>;
 
   generateFollowups(opts: {

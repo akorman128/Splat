@@ -8,6 +8,7 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { estimateTokens } from "@/lib/tokens";
 import { thinkingSummary } from "@/lib/providers/thinking";
+import { webSearchSummary } from "@/lib/providers/web-search";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
 import { SuggestionRail } from "./SuggestionRail";
 import { InterruptedNotice } from "./InterruptedNotice";
@@ -172,6 +173,14 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
               <span>·</span>
               <span className="truncate">
                 {thinkingSummary(node.thinking_level)}
+              </span>
+            </>
+          )}
+          {webSearchSummary(node.web_search) && (
+            <>
+              <span>·</span>
+              <span className="truncate">
+                {webSearchSummary(node.web_search)}
               </span>
             </>
           )}

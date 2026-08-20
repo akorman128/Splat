@@ -1,5 +1,6 @@
 import { topoOrder } from "@/lib/graph/topo-order";
 import { thinkingSummary } from "@/lib/providers/thinking";
+import { webSearchSummary } from "@/lib/providers/web-search";
 import type { NodeRow } from "@/lib/types";
 import type { ConversationExport } from "./conversation";
 
@@ -57,6 +58,8 @@ export function toMarkdown({
     const meta = [node.model];
     const thinking = thinkingSummary(node.thinking_level);
     if (thinking) meta.push(thinking);
+    const search = webSearchSummary(node.web_search);
+    if (search) meta.push(search);
     meta.push(
       node.parent_id && byId.has(node.parent_id)
         ? `branches from ${reference(node.parent_id)}`

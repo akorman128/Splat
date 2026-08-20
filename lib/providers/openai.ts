@@ -2,7 +2,9 @@ import "server-only";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MODELS } from "./models";
+import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { OPENAI_WEB_SEARCH, datedWebSearchTool } from "./web-search";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
@@ -15,6 +17,35 @@ function reasoningParams(
 ): { reasoning?: OpenAI.Reasoning } {
   if (!level) return {};
   return { reasoning: { effort: level === "off" ? "none" : level } };
+}
+
+// The preview type is what the models released before it take, and the picker
+// lists those too.
+async function webSearchTools(
+  apiKey: string,
+  model: string,
+): Promise<OpenAI.Responses.Tool[]> {
+  const entry = await catalogEntry("openai", model, apiKey);
+  return [{ type: datedWebSearchTool(OPENAI_WEB_SEARCH, entry) }];
+}
+
+function urlCitations(response: OpenAI.Responses.Response): StreamEvent[] {
+  const events: StreamEvent[] = [];
+  for (const item of response.output) {
+    if (item.type !== "message") continue;
+    for (const part of item.content) {
+      if (part.type !== "output_text") continue;
+      for (const annotation of part.annotations) {
+        if (annotation.type !== "url_citation") continue;
+        events.push({
+          type: "citation",
+          title: annotation.title,
+          url: annotation.url,
+        });
+      }
+    }
+  }
+  return events;
 }
 
 function toResponsesInput(
@@ -50,6 +81,44 @@ function toResponsesInput(
   });
 }
 
+async function* runChat(
+  apiKey: string,
+  params: OpenAI.Responses.ResponseCreateParamsStreaming,
+): AsyncGenerator<StreamEvent> {
+  const stream = await client(apiKey).responses.create(params);
+
+  let usage: { promptTokens: number | null; completionTokens: number | null } = {
+    promptTokens: null,
+    completionTokens: null,
+  };
+  let citations: StreamEvent[] = [];
+
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta") {
+      yield { type: "delta", text: event.delta };
+    } else if (event.type === "response.completed") {
+      // Read off the finished response rather than the annotation events,
+      // which type their payload as unknown.
+      citations = urlCitations(event.response);
+      usage = {
+        promptTokens: event.response.usage?.input_tokens ?? null,
+        completionTokens: event.response.usage?.output_tokens ?? null,
+      };
+    } else if (event.type === "response.failed") {
+      throw new Error(
+        event.response.error?.message ?? "OpenAI reported a failed response",
+      );
+    } else if (event.type === "response.incomplete") {
+      throw new Error(
+        `OpenAI response incomplete: ${event.response.incomplete_details?.reason ?? "unknown reason"}`,
+      );
+    }
+  }
+
+  yield* citations;
+  yield { type: "usage", ...usage };
+}
+
 export const openaiAdapter: ProviderAdapter = {
   async verifyKey(apiKey) {
     try {
@@ -72,43 +141,25 @@ export const openaiAdapter: ProviderAdapter = {
     messages,
     system,
     thinking,
+    webSearch,
   }): AsyncGenerator<StreamEvent> {
     // No max_output_tokens: OpenAI's model list publishes no per-model ceiling,
     // and a fixed one is a 400 on every model whose own ceiling is lower than
     // ours. Left unset, each model stops at its own limit.
-    const stream = await client(apiKey).responses.create({
+    const params = {
       model,
       input: toResponsesInput(messages),
-      stream: true,
+      stream: true as const,
       ...(system ? { instructions: system } : {}),
       ...reasoningParams(thinking ?? null),
-    });
-
-    let usage: { promptTokens: number | null; completionTokens: number | null } = {
-      promptTokens: null,
-      completionTokens: null,
     };
 
-    for await (const event of stream) {
-      if (event.type === "response.output_text.delta") {
-        yield { type: "delta", text: event.delta };
-      } else if (event.type === "response.completed") {
-        usage = {
-          promptTokens: event.response.usage?.input_tokens ?? null,
-          completionTokens: event.response.usage?.output_tokens ?? null,
-        };
-      } else if (event.type === "response.failed") {
-        throw new Error(
-          event.response.error?.message ?? "OpenAI reported a failed response",
-        );
-      } else if (event.type === "response.incomplete") {
-        throw new Error(
-          `OpenAI response incomplete: ${event.response.incomplete_details?.reason ?? "unknown reason"}`,
-        );
-      }
-    }
-
-    yield { type: "usage", ...usage };
+    yield* runChat(
+      apiKey,
+      webSearch
+        ? { ...params, tools: await webSearchTools(apiKey, model) }
+        : params,
+    );
   },
 
   async generateFollowups({ apiKey, prompt, response, model }) {

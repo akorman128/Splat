@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { CatalogModel, Provider } from "./models";
+import { OPENROUTER_AUTO, type CatalogModel, type Provider } from "./models";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/models";
 const TTL_MS = 60 * 60 * 1000;
@@ -12,6 +12,7 @@ const MAX_CACHE_ENTRIES = 64;
 type RawModel = {
   id?: unknown;
   name?: unknown;
+  created?: unknown;
   context_length?: unknown;
   pricing?: { prompt?: unknown; completion?: unknown } | null;
   architecture?: {
@@ -19,6 +20,7 @@ type RawModel = {
     input_modalities?: unknown;
   } | null;
   top_provider?: { max_completion_tokens?: unknown } | null;
+  supported_parameters?: unknown;
 };
 
 function toNumber(value: unknown): number | null {
@@ -40,6 +42,8 @@ function normalise(raw: RawModel): CatalogModel | null {
   }
 
   const inputs = raw.architecture?.input_modalities;
+  const parameters = raw.supported_parameters;
+  const created = toNumber(raw.created);
 
   return {
     id: raw.id,
@@ -52,6 +56,14 @@ function normalise(raw: RawModel): CatalogModel | null {
     // third-party data, and refusing a send on a missing field would be our bug
     // showing up as the user's.
     supportsImages: Array.isArray(inputs) ? inputs.includes("image") : true,
+    // The server tool is a tool call, so only a model that can make one can
+    // search. Auto declares the union of everything it might route to and is
+    // taken at its word — it routes to a model that can.
+    supportsWebSearch:
+      raw.id === OPENROUTER_AUTO || !Array.isArray(parameters)
+        ? true
+        : parameters.includes("tools"),
+    releasedAt: created === null ? null : created * 1000,
   };
 }
 
@@ -93,6 +105,11 @@ async function loadAnthropic(apiKey: string): Promise<CatalogModel[]> {
       promptPrice: null,
       completionPrice: null,
       supportsImages: model.capabilities?.image_input.supported ?? true,
+      // Not among the published capabilities, and every model this endpoint
+      // lists takes one of the two web search tools, so there is nothing here
+      // to hide the toggle for.
+      supportsWebSearch: true,
+      releasedAt: Date.parse(model.created_at) || null,
     });
   }
   if (models.length === 0) {
@@ -124,7 +141,7 @@ async function loadOpenAI(apiKey: string): Promise<CatalogModel[]> {
   // one that just shipped.
   return listed
     .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id))
-    .map(({ id }) => ({
+    .map(({ id, created }) => ({
       id,
       name: id,
       // The list carries an id and a release date and nothing else, so every
@@ -134,6 +151,8 @@ async function loadOpenAI(apiKey: string): Promise<CatalogModel[]> {
       promptPrice: null,
       completionPrice: null,
       supportsImages: true,
+      supportsWebSearch: true,
+      releasedAt: created * 1000,
     }));
 }
 

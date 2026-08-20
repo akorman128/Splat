@@ -23,6 +23,7 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { neighboursOf } from "@/lib/graph/neighbours";
 import { thinkingSummary } from "@/lib/providers/thinking";
+import { webSearchSummary } from "@/lib/providers/web-search";
 import { CardAttachmentList } from "./CardAttachmentList";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
@@ -171,6 +172,12 @@ export function ExpandedCardOverlay() {
             <>
               <span>·</span>
               <span>{thinkingSummary(node.thinking_level)}</span>
+            </>
+          )}
+          {webSearchSummary(node.web_search) && (
+            <>
+              <span>·</span>
+              <span>{webSearchSummary(node.web_search)}</span>
             </>
           )}
           <span>·</span>

@@ -263,6 +263,7 @@ export type Database = {
           thinking_level: string | null
           title: string | null
           user_id: string
+          web_search: boolean
         }
         Insert: {
           canvas_h?: number
@@ -284,6 +285,7 @@ export type Database = {
           thinking_level?: string | null
           title?: string | null
           user_id?: string
+          web_search?: boolean
         }
         Update: {
           canvas_h?: number
@@ -305,6 +307,7 @@ export type Database = {
           thinking_level?: string | null
           title?: string | null
           user_id?: string
+          web_search?: boolean
         }
         Relationships: [
           {

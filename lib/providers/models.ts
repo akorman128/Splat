@@ -51,6 +51,14 @@ export type CatalogModel = {
   // advisory for openrouter/auto, which reports the union of everything it
   // might route to.
   supportsImages: boolean;
+  // Whether the provider will run a web search for this model. False hides the
+  // toggle rather than letting a send fail; only OpenRouter publishes enough to
+  // ever say no, since its server tool needs a model that can call tools.
+  supportsWebSearch: boolean;
+  // Release date, epoch millis. Which dated web search tool a model takes
+  // follows from when it shipped, so this is read rather than guessed at from
+  // the wording of a rejection.
+  releasedAt: number | null;
 };
 
 export function isProvider(value: string): value is Provider {
