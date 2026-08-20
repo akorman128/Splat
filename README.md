@@ -51,6 +51,9 @@ you're in.
 - **Write a prompt** in the composer, pick a provider, and send. You get a card.
 - **Branch** by clicking a suggestion chip on a card, or by starting a new prompt
   and checking the ancestors you want as context. Unchecked ancestors aren't sent.
+- **Search the web** by turning it on in the model picker. OpenAI, Anthropic and
+  OpenRouter each run the search themselves — no extra key, billed to the one
+  you already gave them — and the sources the answer cited are listed under it.
 - **Attach files** by dropping them on the canvas, pasting, or using the
   paperclip. They appear in the context picker, nested under the card that owns
   them.

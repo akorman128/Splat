@@ -4,16 +4,20 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { MAX_WEB_SEARCHES, WEB_SEARCH_RESERVE_TOKENS } from "./web-search";
 import { estimateImageTokens } from "@/lib/tokens";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
-// `reasoning` is OpenRouter's own addition to the OpenAI body, so it is absent
-// from the SDK's types: https://openrouter.ai/docs/use-cases/reasoning-tokens
+// `reasoning` and `plugins` are OpenRouter's own additions to the OpenAI body,
+// so both are absent from the SDK's types:
+// https://openrouter.ai/docs/use-cases/reasoning-tokens
+// https://openrouter.ai/docs/guides/features/plugins/web-search
 type OpenRouterStreamBody = OpenAI.ChatCompletionCreateParamsStreaming & {
   reasoning?: { effort: "none" | ThinkingLevel };
+  plugins?: { id: "web"; max_results?: number }[];
 };
 
 function reasoningParams(
@@ -21,6 +25,18 @@ function reasoningParams(
 ): Pick<OpenRouterStreamBody, "reasoning"> {
   if (!level) return {};
   return { reasoning: { effort: level === "off" ? "none" : level } };
+}
+
+// The web plugin rather than the newer openrouter:web_search server tool, which
+// only reaches models that can call tools at all — the picker lists hundreds
+// that cannot, and openrouter/auto routes to whichever it likes. The plugin
+// searches once per request on any model, which is what a toggle the user
+// turned on for this card should do anyway.
+function webSearchParams(
+  enabled: boolean | undefined,
+): Pick<OpenRouterStreamBody, "plugins"> {
+  if (!enabled) return {};
+  return { plugins: [{ id: "web", max_results: MAX_WEB_SEARCHES }] };
 }
 
 function attributionHeaders(): Record<string, string> {
@@ -124,6 +140,7 @@ async function outputBudget(
   model: string,
   messages: ChatMessage[],
   system?: string,
+  webSearch?: boolean,
 ): Promise<number | null> {
   const entry = await catalogEntry("openrouter", model, apiKey);
   if (!entry) return null;
@@ -133,10 +150,13 @@ async function outputBudget(
     budget = Math.min(budget, entry.maxOutputTokens);
   }
   if (entry.contextLength) {
+    // Search results are prepended by OpenRouter, after this runs and out of
+    // sight of the estimate, so the room they take has to be set aside here.
     const room =
       entry.contextLength -
       estimatePromptTokens(messages, system) -
-      OUTPUT_RESERVE_TOKENS;
+      OUTPUT_RESERVE_TOKENS -
+      (webSearch ? WEB_SEARCH_RESERVE_TOKENS : 0);
     if (room < MIN_OUTPUT_TOKENS) {
       throw new Error(
         `This conversation is too long for ${model} — it leaves no room for a reply. Start a new card or pick a model with a larger context window.`,
@@ -197,6 +217,30 @@ type MaybeErrorChunk = {
   choices?: ({ error?: ChunkError } | null)[];
 };
 
+// OpenRouter hangs url_citation annotations off the streamed delta, which the
+// OpenAI SDK types only for a whole message.
+type MaybeAnnotatedChunk = {
+  choices?: ({ delta?: { annotations?: unknown } | null } | null)[];
+};
+
+function chunkCitations(chunk: MaybeAnnotatedChunk): StreamEvent[] {
+  const annotations = chunk.choices?.[0]?.delta?.annotations;
+  if (!Array.isArray(annotations)) return [];
+  const events: StreamEvent[] = [];
+  for (const annotation of annotations) {
+    const citation = (
+      annotation as { url_citation?: { url?: unknown; title?: unknown } } | null
+    )?.url_citation;
+    if (!citation || typeof citation.url !== "string") continue;
+    events.push({
+      type: "citation",
+      title: typeof citation.title === "string" ? citation.title : null,
+      url: citation.url,
+    });
+  }
+  return events;
+}
+
 function streamErrorMessage(chunk: MaybeErrorChunk): string | null {
   const error = chunk.error ?? chunk.choices?.[0]?.error;
   if (!error) return null;
@@ -238,6 +282,7 @@ export const openrouterAdapter: ProviderAdapter = {
     messages,
     system,
     thinking,
+    webSearch,
   }): AsyncGenerator<StreamEvent> {
     const body: OpenRouterStreamBody = {
       model,
@@ -245,8 +290,10 @@ export const openrouterAdapter: ProviderAdapter = {
       stream: true,
       stream_options: { include_usage: true },
       max_tokens:
-        (await outputBudget(apiKey, model, messages, system)) ?? undefined,
+        (await outputBudget(apiKey, model, messages, system, webSearch)) ??
+        undefined,
       ...reasoningParams(thinking ?? null),
+      ...webSearchParams(webSearch),
     };
     const stream = await client(apiKey).chat.completions.create(body);
 
@@ -255,6 +302,7 @@ export const openrouterAdapter: ProviderAdapter = {
       completionTokens: null,
     };
     let finishReason: string | null = null;
+    const citations: StreamEvent[] = [];
 
     for await (const chunk of stream) {
       const errorMessage = streamErrorMessage(chunk as MaybeErrorChunk);
@@ -264,6 +312,7 @@ export const openrouterAdapter: ProviderAdapter = {
       if (choice?.delta?.content) {
         yield { type: "delta", text: choice.delta.content };
       }
+      citations.push(...chunkCitations(chunk as MaybeAnnotatedChunk));
       if (choice?.finish_reason) {
         finishReason = choice.finish_reason;
       }
@@ -277,6 +326,7 @@ export const openrouterAdapter: ProviderAdapter = {
 
     assertWholeResponse(finishReason);
 
+    yield* citations;
     yield { type: "usage", ...usage };
   },
 

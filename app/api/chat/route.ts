@@ -9,6 +9,11 @@ import {
   toThinkingLevel,
   type ThinkingLevel,
 } from "@/lib/providers/thinking";
+import {
+  citationsMarkdown,
+  toWebSearch,
+  type Citation,
+} from "@/lib/providers/web-search";
 import { catalogEntry, isKnownCatalogModel } from "@/lib/providers/catalog";
 import { validateContextSelection } from "@/lib/graph/cycle-check";
 import { validateAttachmentSelection } from "@/lib/graph/attachment-selection";
@@ -51,6 +56,7 @@ type NewChatBody = {
   provider: string;
   model: string;
   thinking?: string | null;
+  webSearch?: boolean;
   canvasX?: number;
   canvasY?: number;
 };
@@ -63,6 +69,7 @@ type RegenerateBody = {
   provider?: string;
   model?: string;
   thinking?: string | null;
+  webSearch?: boolean;
   skillIds?: string[];
 };
 
@@ -181,6 +188,7 @@ export async function POST(request: Request) {
       provider?: string;
       model?: string;
       thinking_level?: string | null;
+      web_search?: boolean;
       prompt_tokens?: null;
       completion_tokens?: null;
     } = {};
@@ -207,6 +215,11 @@ export async function POST(request: Request) {
           );
         }
         rerunFields.thinking_level = level.level;
+      }
+      // Absent leaves the card on whatever it already carries, like the level
+      // above; a retry replays the card untouched either way.
+      if (body.webSearch !== undefined) {
+        rerunFields.web_search = toWebSearch(body.webSearch);
       }
     }
 
@@ -547,6 +560,7 @@ export async function POST(request: Request) {
         provider,
         model,
         thinking_level: thinking.level,
+        web_search: toWebSearch(body.webSearch),
         status: "streaming",
         canvas_x: typeof body.canvasX === "number" ? body.canvasX : 0,
         canvas_y: typeof body.canvasY === "number" ? body.canvasY : 0,
@@ -691,6 +705,7 @@ export async function POST(request: Request) {
       });
 
       let accumulated = "";
+      const citations: Citation[] = [];
       let flushedLength = 0;
       let lastFlushAt = Date.now();
       let usage: { promptTokens: number | null; completionTokens: number | null } =
@@ -717,6 +732,7 @@ export async function POST(request: Request) {
           messages,
           system,
           thinking: toThinkingLevel(node.thinking_level),
+          webSearch: node.web_search,
         })) {
           if (cancelled) {
             throw new Error("Generation interrupted: connection closed");
@@ -725,12 +741,22 @@ export async function POST(request: Request) {
             accumulated += event.text;
             send({ type: "delta", text: event.text });
             await maybeFlush();
+          } else if (event.type === "citation") {
+            citations.push({ title: event.title, url: event.url });
           } else if (event.type === "usage") {
             usage = {
               promptTokens: event.promptTokens,
               completionTokens: event.completionTokens,
             };
           }
+        }
+
+        // Part of the answer rather than a column of its own, so it exports,
+        // shares and re-renders with the rest of it.
+        const sources = citationsMarkdown(citations);
+        if (sources) {
+          accumulated += sources;
+          send({ type: "delta", text: sources });
         }
 
         const completed = {

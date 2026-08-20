@@ -3,6 +3,7 @@
 import { visibleContextEdges } from "@/lib/graph/context-edges";
 import { estimateTokens } from "@/lib/tokens";
 import { thinkingSummary } from "@/lib/providers/thinking";
+import { webSearchSummary } from "@/lib/providers/web-search";
 import type { NodeRow } from "@/lib/types";
 import type { ConversationExport } from "./conversation";
 import { cardTitle } from "./markdown";
@@ -178,7 +179,13 @@ function footerText(node: NodeRow, contextCount: number): string {
     node.prompt_tokens != null && node.completion_tokens != null
       ? `${node.prompt_tokens}→${node.completion_tokens} tok`
       : `~${estimateTokens(node.prompt + node.response)} tok`;
-  return [node.model, thinkingSummary(node.thinking_level), tokens, contextLabel(contextCount)]
+  return [
+    node.model,
+    thinkingSummary(node.thinking_level),
+    webSearchSummary(node.web_search),
+    tokens,
+    contextLabel(contextCount),
+  ]
     .filter(Boolean)
     .join("  ·  ");
 }

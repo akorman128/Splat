@@ -19,6 +19,7 @@ export type SubmitParams = {
   provider: Provider;
   model: string;
   thinking: ThinkingLevel | null;
+  webSearch: boolean;
   canvasX: number;
   canvasY: number;
 };
@@ -29,6 +30,7 @@ export type RegenerateParams = {
   provider: Provider;
   model: string;
   thinking: ThinkingLevel | null;
+  webSearch: boolean;
   skillIds: string[];
 };
 

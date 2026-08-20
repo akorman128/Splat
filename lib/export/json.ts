@@ -28,6 +28,7 @@ export function toJson({
         provider: node.provider,
         model: node.model,
         thinkingLevel: node.thinking_level,
+        webSearch: node.web_search,
         status: node.status,
         errorMessage: node.error_message,
         promptTokens: node.prompt_tokens,

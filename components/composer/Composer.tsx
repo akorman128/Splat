@@ -144,6 +144,8 @@ export function Composer({
   const setModel = useComposerStore((s) => s.setModel);
   const thinking = useComposerStore((s) => s.thinking);
   const setThinking = useComposerStore((s) => s.setThinking);
+  const webSearch = useComposerStore((s) => s.webSearch);
+  const setWebSearch = useComposerStore((s) => s.setWebSearch);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const parent = useGraphStore((s) =>
@@ -225,6 +227,7 @@ export function Composer({
     provider: Provider | null;
     model: string | null;
     thinking: ThinkingLevel | null;
+    webSearch: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -236,6 +239,7 @@ export function Composer({
         composer.setProvider(parked.provider);
         if (parked.model) composer.setModel(parked.model);
         composer.setThinking(parked.thinking);
+        composer.setWebSearch(parked.webSearch);
       }
       return;
     }
@@ -245,6 +249,7 @@ export function Composer({
         provider: composer.provider,
         model: composer.model,
         thinking: composer.thinking,
+        webSearch: composer.webSearch,
       };
     }
     const target = useGraphStore.getState().nodes[regenerateNodeId];
@@ -256,9 +261,12 @@ export function Composer({
       composer.setProvider(target.provider);
       composer.setModel(target.model);
     }
-    // Outside the guard above: a level restores even when the card's provider
-    // is gone and its model cannot.
-    if (target) composer.setThinking(toThinkingLevel(target.thinking_level));
+    // Outside the guard above: a level and a toggle restore even when the
+    // card's provider is gone and its model cannot.
+    if (target) {
+      composer.setThinking(toThinkingLevel(target.thinking_level));
+      composer.setWebSearch(target.web_search);
+    }
 
     const field = textareaRef.current;
     if (field) {
@@ -294,6 +302,7 @@ export function Composer({
           provider,
           model: model ?? defaultModel(provider),
           thinking,
+          webSearch,
           skillIds: attached.map((s) => s.id),
         },
         onNode: (node) => {
@@ -365,6 +374,7 @@ export function Composer({
           provider,
           model: model ?? defaultModel(provider),
           thinking,
+          webSearch,
           canvasX: position.x,
           canvasY: position.y,
         },
@@ -681,6 +691,8 @@ export function Composer({
             onChange={setModel}
             thinking={thinking}
             onThinkingChange={setThinking}
+            webSearch={webSearch}
+            onWebSearchChange={setWebSearch}
           />
         )}
         <Button

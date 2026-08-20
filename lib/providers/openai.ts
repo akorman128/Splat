@@ -17,6 +17,36 @@ function reasoningParams(
   return { reasoning: { effort: level === "off" ? "none" : level } };
 }
 
+// The preview type is what the models released before mid-2025 take, and the
+// picker lists those too; the current one is a 400 on them and vice versa, so
+// which to send is only knowable by asking.
+const WEB_SEARCH_TYPES = ["web_search", "web_search_preview"] as const;
+
+type WebSearchType = (typeof WEB_SEARCH_TYPES)[number];
+
+function rejectsToolType(err: unknown, type: WebSearchType): boolean {
+  return err instanceof OpenAI.BadRequestError && err.message.includes(type);
+}
+
+function urlCitations(response: OpenAI.Responses.Response): StreamEvent[] {
+  const events: StreamEvent[] = [];
+  for (const item of response.output) {
+    if (item.type !== "message") continue;
+    for (const part of item.content) {
+      if (part.type !== "output_text") continue;
+      for (const annotation of part.annotations) {
+        if (annotation.type !== "url_citation") continue;
+        events.push({
+          type: "citation",
+          title: annotation.title,
+          url: annotation.url,
+        });
+      }
+    }
+  }
+  return events;
+}
+
 function toResponsesInput(
   messages: ChatMessage[],
 ): OpenAI.Responses.ResponseInput {
@@ -50,6 +80,44 @@ function toResponsesInput(
   });
 }
 
+async function* runChat(
+  apiKey: string,
+  params: OpenAI.Responses.ResponseCreateParamsStreaming,
+): AsyncGenerator<StreamEvent> {
+  const stream = await client(apiKey).responses.create(params);
+
+  let usage: { promptTokens: number | null; completionTokens: number | null } = {
+    promptTokens: null,
+    completionTokens: null,
+  };
+  let citations: StreamEvent[] = [];
+
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta") {
+      yield { type: "delta", text: event.delta };
+    } else if (event.type === "response.completed") {
+      // Read off the finished response rather than the annotation events,
+      // which type their payload as unknown.
+      citations = urlCitations(event.response);
+      usage = {
+        promptTokens: event.response.usage?.input_tokens ?? null,
+        completionTokens: event.response.usage?.output_tokens ?? null,
+      };
+    } else if (event.type === "response.failed") {
+      throw new Error(
+        event.response.error?.message ?? "OpenAI reported a failed response",
+      );
+    } else if (event.type === "response.incomplete") {
+      throw new Error(
+        `OpenAI response incomplete: ${event.response.incomplete_details?.reason ?? "unknown reason"}`,
+      );
+    }
+  }
+
+  yield* citations;
+  yield { type: "usage", ...usage };
+}
+
 export const openaiAdapter: ProviderAdapter = {
   async verifyKey(apiKey) {
     try {
@@ -72,43 +140,47 @@ export const openaiAdapter: ProviderAdapter = {
     messages,
     system,
     thinking,
+    webSearch,
   }): AsyncGenerator<StreamEvent> {
     // No max_output_tokens: OpenAI's model list publishes no per-model ceiling,
     // and a fixed one is a 400 on every model whose own ceiling is lower than
     // ours. Left unset, each model stops at its own limit.
-    const stream = await client(apiKey).responses.create({
+    const params = {
       model,
       input: toResponsesInput(messages),
-      stream: true,
+      stream: true as const,
       ...(system ? { instructions: system } : {}),
       ...reasoningParams(thinking ?? null),
-    });
-
-    let usage: { promptTokens: number | null; completionTokens: number | null } = {
-      promptTokens: null,
-      completionTokens: null,
     };
 
-    for await (const event of stream) {
-      if (event.type === "response.output_text.delta") {
-        yield { type: "delta", text: event.delta };
-      } else if (event.type === "response.completed") {
-        usage = {
-          promptTokens: event.response.usage?.input_tokens ?? null,
-          completionTokens: event.response.usage?.output_tokens ?? null,
-        };
-      } else if (event.type === "response.failed") {
-        throw new Error(
-          event.response.error?.message ?? "OpenAI reported a failed response",
-        );
-      } else if (event.type === "response.incomplete") {
-        throw new Error(
-          `OpenAI response incomplete: ${event.response.incomplete_details?.reason ?? "unknown reason"}`,
+    if (!webSearch) {
+      yield* runChat(apiKey, params);
+      return;
+    }
+
+    // Nothing has been yielded when a tool type is rejected — the 400 lands
+    // before the first event — so the other type gets a clean run at it.
+    let started = false;
+    for (const [index, type] of WEB_SEARCH_TYPES.entries()) {
+      const last = index === WEB_SEARCH_TYPES.length - 1;
+      try {
+        for await (const event of runChat(apiKey, { ...params, tools: [{ type }] })) {
+          started = true;
+          yield event;
+        }
+        return;
+      } catch (err) {
+        if (started || !rejectsToolType(err, type)) throw err;
+        if (last) {
+          throw new Error(
+            `${model} cannot search the web. Pick a model that can, or turn web search off.`,
+          );
+        }
+        console.warn(
+          `[providers/openai] ${model} rejected the ${type} tool; retrying with ${WEB_SEARCH_TYPES[index + 1]}`,
         );
       }
     }
-
-    yield { type: "usage", ...usage };
   },
 
   async generateFollowups({ apiKey, prompt, response, model }) {

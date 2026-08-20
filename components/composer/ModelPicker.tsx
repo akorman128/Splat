@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, ChevronsUpDownIcon, Loader2 } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, Globe, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,6 +19,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/providers/models";
 import { THINKING_LABELS, type ThinkingLevel } from "@/lib/providers/thinking";
 import { ThinkingPicker } from "./ThinkingPicker";
+import { WebSearchPicker } from "./WebSearchPicker";
 import { formatTokens } from "@/lib/tokens";
 
 const MAX_ROWS = 80;
@@ -56,12 +57,16 @@ export function ModelPicker({
   onChange,
   thinking,
   onThinkingChange,
+  webSearch,
+  onWebSearchChange,
 }: {
   provider: Provider;
   value: string;
   onChange: (modelId: string) => void;
   thinking: ThinkingLevel | null;
   onThinkingChange: (level: ThinkingLevel | null) => void;
+  webSearch: boolean;
+  onWebSearchChange: (webSearch: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -111,6 +116,9 @@ export function ModelPicker({
           <span className="shrink-0 text-muted-foreground">
             · {THINKING_LABELS[thinking]}
           </span>
+        )}
+        {webSearch && (
+          <Globe className="size-3.5 shrink-0 text-muted-foreground" />
         )}
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </Button>
@@ -206,6 +214,7 @@ export function ModelPicker({
           </ScrollArea>
 
           <ThinkingPicker value={thinking} onChange={onThinkingChange} />
+          <WebSearchPicker value={webSearch} onChange={onWebSearchChange} />
         </DialogContent>
       </Dialog>
     </>
