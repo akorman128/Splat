@@ -2,7 +2,9 @@ import "server-only";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { MODELS } from "./models";
+import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { OPENAI_WEB_SEARCH, datedWebSearchTool } from "./web-search";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
@@ -17,15 +19,14 @@ function reasoningParams(
   return { reasoning: { effort: level === "off" ? "none" : level } };
 }
 
-// The preview type is what the models released before mid-2025 take, and the
-// picker lists those too; the current one is a 400 on them and vice versa, so
-// which to send is only knowable by asking.
-const WEB_SEARCH_TYPES = ["web_search", "web_search_preview"] as const;
-
-type WebSearchType = (typeof WEB_SEARCH_TYPES)[number];
-
-function rejectsToolType(err: unknown, type: WebSearchType): boolean {
-  return err instanceof OpenAI.BadRequestError && err.message.includes(type);
+// The preview type is what the models released before it take, and the picker
+// lists those too.
+async function webSearchTools(
+  apiKey: string,
+  model: string,
+): Promise<OpenAI.Responses.Tool[]> {
+  const entry = await catalogEntry("openai", model, apiKey);
+  return [{ type: datedWebSearchTool(OPENAI_WEB_SEARCH, entry) }];
 }
 
 function urlCitations(response: OpenAI.Responses.Response): StreamEvent[] {
@@ -153,34 +154,12 @@ export const openaiAdapter: ProviderAdapter = {
       ...reasoningParams(thinking ?? null),
     };
 
-    if (!webSearch) {
-      yield* runChat(apiKey, params);
-      return;
-    }
-
-    // Nothing has been yielded when a tool type is rejected — the 400 lands
-    // before the first event — so the other type gets a clean run at it.
-    let started = false;
-    for (const [index, type] of WEB_SEARCH_TYPES.entries()) {
-      const last = index === WEB_SEARCH_TYPES.length - 1;
-      try {
-        for await (const event of runChat(apiKey, { ...params, tools: [{ type }] })) {
-          started = true;
-          yield event;
-        }
-        return;
-      } catch (err) {
-        if (started || !rejectsToolType(err, type)) throw err;
-        if (last) {
-          throw new Error(
-            `${model} cannot search the web. Pick a model that can, or turn web search off.`,
-          );
-        }
-        console.warn(
-          `[providers/openai] ${model} rejected the ${type} tool; retrying with ${WEB_SEARCH_TYPES[index + 1]}`,
-        );
-      }
-    }
+    yield* runChat(
+      apiKey,
+      webSearch
+        ? { ...params, tools: await webSearchTools(apiKey, model) }
+        : params,
+    );
   },
 
   async generateFollowups({ apiKey, prompt, response, model }) {

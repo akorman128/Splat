@@ -38,9 +38,10 @@ export function WebSearchPicker({
         ))}
       </div>
       <p className="text-[11px] text-muted-foreground">
-        The provider searches the web and hands the results to the model — no
-        second key, but the searches and the pages they pull in are billed to
-        the same account. Cited sources are listed under the answer.
+        Lets the model search when it decides it needs to — no second key, but
+        the searches and the pages they pull in are billed to the same account.
+        Cited sources are listed under the answer. Models that cannot search
+        don&rsquo;t show this.
       </p>
     </div>
   );

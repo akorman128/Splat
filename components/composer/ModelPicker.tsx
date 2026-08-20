@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, ChevronsUpDownIcon, Globe, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,15 @@ export function ModelPicker({
     () => (models ? publishesPrices(models) : false),
     [models],
   );
+
+  // Until the list loads there is nothing to hide the toggle on, and a model
+  // the list does not name is one the catalogue could not speak for — neither
+  // is a reason to take the control away.
+  const searchable = models?.find((m) => m.id === value)?.supportsWebSearch ?? true;
+
+  useEffect(() => {
+    if (webSearch && !searchable) onWebSearchChange(false);
+  }, [webSearch, searchable, onWebSearchChange]);
 
   const matches = useMemo(() => {
     if (!models) return [];
@@ -214,7 +223,9 @@ export function ModelPicker({
           </ScrollArea>
 
           <ThinkingPicker value={thinking} onChange={onThinkingChange} />
-          <WebSearchPicker value={webSearch} onChange={onWebSearchChange} />
+          {searchable && (
+            <WebSearchPicker value={webSearch} onChange={onWebSearchChange} />
+          )}
         </DialogContent>
       </Dialog>
     </>

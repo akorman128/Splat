@@ -4,7 +4,11 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import { MAX_WEB_SEARCHES } from "./web-search";
+import {
+  ANTHROPIC_WEB_SEARCH,
+  MAX_WEB_SEARCHES,
+  datedWebSearchTool,
+} from "./web-search";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
@@ -34,21 +38,20 @@ function thinkingParams(level: ThinkingLevel | null): ThinkingParams {
   return { thinking: { type: "adaptive" }, output_config: { effort: level } };
 }
 
-// The dated tool types are per-model: the newer one filters results before they
-// reach the context window, and is a 400 on anything older than Opus 4.6. The
-// picker lists every model the key can reach, so the older type is the fallback
-// rather than a second choice we could make up front.
-const WEB_SEARCH_TYPES = ["web_search_20260209", "web_search_20250305"] as const;
-
-type WebSearchType = (typeof WEB_SEARCH_TYPES)[number];
-
-function webSearchTool(type: WebSearchType): Anthropic.ToolUnion {
-  return { type, name: "web_search", max_uses: MAX_WEB_SEARCHES };
-}
-
-// The wording varies, but a rejected tool type always names itself.
-function rejectsToolType(err: unknown, type: WebSearchType): boolean {
-  return err instanceof Anthropic.BadRequestError && err.message.includes(type);
+// The newer type filters results before they reach the context window; the
+// older one is what a model released before it was built against.
+async function webSearchTools(
+  apiKey: string,
+  model: string,
+): Promise<Anthropic.ToolUnion[]> {
+  const entry = await catalogEntry("anthropic", model, apiKey);
+  return [
+    {
+      type: datedWebSearchTool(ANTHROPIC_WEB_SEARCH, entry),
+      name: "web_search",
+      max_uses: MAX_WEB_SEARCHES,
+    },
+  ];
 }
 
 // A server-side search loop that hits its own iteration limit stops with
@@ -209,36 +212,12 @@ export const anthropicAdapter: ProviderAdapter = {
       ...thinkingParams(thinking ?? null),
     };
 
-    if (!webSearch) {
-      yield* runChat(apiKey, params, toAnthropic(messages));
-      return;
-    }
-
-    // Nothing has been yielded when a tool type is rejected — the 400 lands on
-    // the first read of the stream — so the older type gets a clean run at it.
-    let started = false;
-    for (const [index, type] of WEB_SEARCH_TYPES.entries()) {
-      const last = index === WEB_SEARCH_TYPES.length - 1;
-      try {
-        for await (const event of runChat(apiKey, params, toAnthropic(messages), [
-          webSearchTool(type),
-        ])) {
-          started = true;
-          yield event;
-        }
-        return;
-      } catch (err) {
-        if (started || !rejectsToolType(err, type)) throw err;
-        if (last) {
-          throw new Error(
-            `${model} cannot search the web. Pick a newer model, or turn web search off.`,
-          );
-        }
-        console.warn(
-          `[providers/anthropic] ${model} rejected ${type}; retrying with ${WEB_SEARCH_TYPES[index + 1]}`,
-        );
-      }
-    }
+    yield* runChat(
+      apiKey,
+      params,
+      toAnthropic(messages),
+      webSearch ? await webSearchTools(apiKey, model) : undefined,
+    );
   },
 
   async generateFollowups({ apiKey, prompt, response, model }) {

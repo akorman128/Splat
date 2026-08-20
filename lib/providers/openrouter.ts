@@ -4,20 +4,32 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
-import { MAX_WEB_SEARCHES, WEB_SEARCH_RESERVE_TOKENS } from "./web-search";
+import {
+  MAX_WEB_SEARCHES,
+  OPENROUTER_WEB_SEARCH,
+  WEB_SEARCH_RESERVE_TOKENS,
+} from "./web-search";
 import { estimateImageTokens } from "@/lib/tokens";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
-// `reasoning` and `plugins` are OpenRouter's own additions to the OpenAI body,
-// so both are absent from the SDK's types:
+// `reasoning` is OpenRouter's own addition to the OpenAI body and the server
+// tools are its own tool types, so neither is in the SDK's types:
 // https://openrouter.ai/docs/use-cases/reasoning-tokens
-// https://openrouter.ai/docs/guides/features/plugins/web-search
-type OpenRouterStreamBody = OpenAI.ChatCompletionCreateParamsStreaming & {
+// https://openrouter.ai/docs/guides/features/server-tools/web-search
+type ServerTool = {
+  type: typeof OPENROUTER_WEB_SEARCH;
+  parameters?: { max_results?: number };
+};
+
+type OpenRouterStreamBody = Omit<
+  OpenAI.ChatCompletionCreateParamsStreaming,
+  "tools"
+> & {
   reasoning?: { effort: "none" | ThinkingLevel };
-  plugins?: { id: "web"; max_results?: number }[];
+  tools?: ServerTool[];
 };
 
 function reasoningParams(
@@ -27,16 +39,23 @@ function reasoningParams(
   return { reasoning: { effort: level === "off" ? "none" : level } };
 }
 
-// The web plugin rather than the newer openrouter:web_search server tool, which
-// only reaches models that can call tools at all — the picker lists hundreds
-// that cannot, and openrouter/auto routes to whichever it likes. The plugin
-// searches once per request on any model, which is what a toggle the user
-// turned on for this card should do anyway.
+// The server tool rather than the deprecated `web` plugin: the model decides
+// when to search, what for, and whether one round was enough, instead of one
+// search being run on every request whatever was asked. It is a tool call, so
+// it only reaches models that can make one — which is what supportsWebSearch
+// on the catalogue entry is for, and why this is never sent blind.
 function webSearchParams(
   enabled: boolean | undefined,
-): Pick<OpenRouterStreamBody, "plugins"> {
+): Pick<OpenRouterStreamBody, "tools"> {
   if (!enabled) return {};
-  return { plugins: [{ id: "web", max_results: MAX_WEB_SEARCHES }] };
+  return {
+    tools: [
+      {
+        type: OPENROUTER_WEB_SEARCH,
+        parameters: { max_results: MAX_WEB_SEARCHES },
+      },
+    ],
+  };
 }
 
 function attributionHeaders(): Record<string, string> {
@@ -150,16 +169,24 @@ async function outputBudget(
     budget = Math.min(budget, entry.maxOutputTokens);
   }
   if (entry.contextLength) {
-    // Search results are prepended by OpenRouter, after this runs and out of
+    // Search results are pulled in by OpenRouter, after this runs and out of
     // sight of the estimate, so the room they take has to be set aside here.
+    const reserve = webSearch ? WEB_SEARCH_RESERVE_TOKENS : 0;
     const room =
       entry.contextLength -
       estimatePromptTokens(messages, system) -
       OUTPUT_RESERVE_TOKENS -
-      (webSearch ? WEB_SEARCH_RESERVE_TOKENS : 0);
+      reserve;
     if (room < MIN_OUTPUT_TOKENS) {
+      // Naming the reserve when it is what tipped this over: without it the
+      // same card sent fine a moment ago, and the fix is a toggle rather than
+      // a shorter conversation.
+      const blame =
+        reserve > 0 && room + reserve >= MIN_OUTPUT_TOKENS
+          ? " once web search is given room for its results. Turn web search off, or start a new card"
+          : ". Start a new card or pick a model with a larger context window";
       throw new Error(
-        `This conversation is too long for ${model} — it leaves no room for a reply. Start a new card or pick a model with a larger context window.`,
+        `This conversation is too long for ${model} — it leaves no room for a reply${blame}.`,
       );
     }
     budget = Math.min(budget, room);
@@ -295,7 +322,11 @@ export const openrouterAdapter: ProviderAdapter = {
       ...reasoningParams(thinking ?? null),
       ...webSearchParams(webSearch),
     };
-    const stream = await client(apiKey).chat.completions.create(body);
+    // The cast is the server tool: OpenRouter accepts its own tool types where
+    // the SDK's union only admits a function or a custom tool.
+    const stream = await client(apiKey).chat.completions.create(
+      body as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
+    );
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {
       promptTokens: null,

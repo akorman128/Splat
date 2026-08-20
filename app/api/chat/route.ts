@@ -129,6 +129,18 @@ async function imagesAllowed(
   return entry?.supportsImages ?? true;
 }
 
+// The picker hides the toggle on a model that cannot search, so this catches a
+// card whose model changed under it — and, like the images check above, treats
+// an unreachable catalogue as no reason to refuse.
+async function webSearchAllowed(
+  provider: Provider,
+  model: string,
+  apiKey: string,
+): Promise<boolean> {
+  const entry = await catalogEntry(provider, model, apiKey);
+  return entry?.supportsWebSearch ?? true;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const user = await currentUser();
@@ -304,6 +316,17 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     }
+    if (
+      (rerunFields.web_search ?? existing.web_search) &&
+      !(await webSearchAllowed(rerunProvider, rerunModel, apiKey))
+    ) {
+      return NextResponse.json(
+        {
+          error: `${rerunModel} cannot search the web. Pick a model that can, or turn web search off.`,
+        },
+        { status: 422 },
+      );
+    }
     const rerunInline = await loadInlineParts(supabase, turnAttachments);
     if (!rerunInline.ok) {
       return NextResponse.json(
@@ -450,6 +473,18 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: `Unknown model for ${provider}: ${model}` },
         { status: 400 },
+      );
+    }
+
+    if (
+      toWebSearch(body.webSearch) &&
+      !(await webSearchAllowed(provider, model, apiKey))
+    ) {
+      return NextResponse.json(
+        {
+          error: `${model} cannot search the web. Pick a model that can, or turn web search off.`,
+        },
+        { status: 422 },
       );
     }
 

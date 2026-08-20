@@ -54,6 +54,7 @@ you're in.
 - **Search the web** by turning it on in the model picker. OpenAI, Anthropic and
   OpenRouter each run the search themselves — no extra key, billed to the one
   you already gave them — and the sources the answer cited are listed under it.
+  The toggle only appears on models that can search.
 - **Attach files** by dropping them on the canvas, pasting, or using the
   paperclip. They appear in the context picker, nested under the card that owns
   them.
