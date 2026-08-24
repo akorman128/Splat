@@ -41,7 +41,7 @@ export function WebSearchPicker({
         Lets the model search when it decides it needs to — no second key, but
         the searches and the pages they pull in are billed to the same account.
         Cited sources are listed under the answer. Models that cannot search
-        don&rsquo;t show this.
+        don&rsquo;t show this. New prompts start on the side Settings picks.
       </p>
     </div>
   );

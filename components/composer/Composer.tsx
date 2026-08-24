@@ -78,11 +78,13 @@ function turnAttachmentCount(
 export function Composer({
   credentials,
   skills,
+  webSearchDefault,
   centered = false,
   onHide,
 }: {
   credentials: CredentialSummary[];
   skills: SkillSummary[];
+  webSearchDefault: boolean;
   centered?: boolean;
   onHide?: () => void;
 }) {
@@ -144,7 +146,7 @@ export function Composer({
   const setModel = useComposerStore((s) => s.setModel);
   const thinking = useComposerStore((s) => s.thinking);
   const setThinking = useComposerStore((s) => s.setThinking);
-  const webSearch = useComposerStore((s) => s.webSearch);
+  const webSearch = useComposerStore((s) => s.webSearch ?? s.webSearchDefault);
   const setWebSearch = useComposerStore((s) => s.setWebSearch);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
@@ -157,6 +159,10 @@ export function Composer({
 
   const connectedProviders = credentials.map((c) => c.provider);
   const hasKey = connectedProviders.length > 0;
+
+  useEffect(() => {
+    useComposerStore.getState().setWebSearchDefault(webSearchDefault);
+  }, [webSearchDefault]);
 
   useEffect(() => {
     if (!provider || !connectedProviders.includes(provider)) {
@@ -227,7 +233,7 @@ export function Composer({
     provider: Provider | null;
     model: string | null;
     thinking: ThinkingLevel | null;
-    webSearch: boolean;
+    webSearch: boolean | null;
   } | null>(null);
 
   useEffect(() => {
