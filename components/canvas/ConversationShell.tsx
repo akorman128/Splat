@@ -31,10 +31,12 @@ const Canvas = dynamic(() => import("./Canvas"), {
 export function ConversationShell({
   credentials,
   skills,
+  webSearchDefault,
   children,
 }: {
   credentials: CredentialSummary[];
   skills: SkillSummary[];
+  webSearchDefault: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -139,6 +141,7 @@ export function ConversationShell({
                 <Composer
                   credentials={credentials}
                   skills={skills}
+                  webSearchDefault={webSearchDefault}
                   centered={!hasNodes}
                   onHide={hasNodes ? toggleComposer : undefined}
                 />

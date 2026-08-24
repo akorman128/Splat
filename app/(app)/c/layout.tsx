@@ -4,7 +4,7 @@ import { ConversationShell } from "@/components/canvas/ConversationShell";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
 import type { Provider } from "@/lib/providers/models";
 
-// Holds the canvas still while the page below it changes. Neither of these
+// Holds the canvas still while the page below it changes. None of these
 // depends on which conversation is open, so they are read once here rather than
 // again on every hop between conversations.
 export default async function ConversationLayout({
@@ -14,10 +14,12 @@ export default async function ConversationLayout({
 }) {
   const supabase = await createClient();
 
-  const [{ data: credentials }, { data: skills }] = await Promise.all([
-    supabase.from("provider_creds").select("provider, key_last4"),
-    supabase.from("skills").select("id, name").order("name"),
-  ]);
+  const [{ data: credentials }, { data: skills }, { data: profile }] =
+    await Promise.all([
+      supabase.from("provider_creds").select("provider, key_last4"),
+      supabase.from("skills").select("id, name").order("name"),
+      supabase.from("profiles").select("web_search").maybeSingle(),
+    ]);
 
   return (
     <ConversationShell
@@ -28,6 +30,7 @@ export default async function ConversationLayout({
         })) satisfies CredentialSummary[]
       }
       skills={(skills ?? []) satisfies SkillSummary[]}
+      webSearchDefault={profile?.web_search ?? true}
     >
       {/* Lets a cold load paint the shell instead of waiting on the page's queries. */}
       <Suspense fallback={null}>{children}</Suspense>

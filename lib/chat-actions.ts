@@ -35,7 +35,7 @@ export function useSubmitSuggestion() {
       if (!parent || !graph.conversationId) {
         throw new Error("Card not loaded");
       }
-      const { provider, model, thinking, webSearch } =
+      const { provider, model, thinking, webSearch, webSearchDefault } =
         useComposerStore.getState();
       if (!provider) {
         throw new Error("Connect a provider API key first (Settings).");
@@ -70,7 +70,7 @@ export function useSubmitSuggestion() {
           provider,
           model: model ?? defaultModel(provider),
           thinking,
-          webSearch,
+          webSearch: webSearch ?? webSearchDefault,
           canvasX: position.x,
           canvasY: position.y,
         },
