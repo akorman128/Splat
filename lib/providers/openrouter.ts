@@ -310,6 +310,7 @@ export const openrouterAdapter: ProviderAdapter = {
     system,
     thinking,
     webSearch,
+    signal,
   }): AsyncGenerator<StreamEvent> {
     const body: OpenRouterStreamBody = {
       model,
@@ -326,6 +327,7 @@ export const openrouterAdapter: ProviderAdapter = {
     // the SDK's union only admits a function or a custom tool.
     const stream = await client(apiKey).chat.completions.create(
       body as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
+      signal ? { signal } : undefined,
     );
 
     let usage: { promptTokens: number | null; completionTokens: number | null } = {

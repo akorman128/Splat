@@ -244,6 +244,7 @@ export type Database = {
       }
       nodes: {
         Row: {
+          cancel_requested: boolean
           canvas_h: number
           canvas_w: number
           canvas_x: number
@@ -259,13 +260,17 @@ export type Database = {
           prompt_tokens: number | null
           provider: string
           response: string
+          run_id: string | null
           status: string
+          stream_token: string | null
           thinking_level: string | null
           title: string | null
+          updated_at: string
           user_id: string
           web_search: boolean
         }
         Insert: {
+          cancel_requested?: boolean
           canvas_h?: number
           canvas_w?: number
           canvas_x?: number
@@ -281,13 +286,17 @@ export type Database = {
           prompt_tokens?: number | null
           provider: string
           response?: string
+          run_id?: string | null
           status?: string
+          stream_token?: string | null
           thinking_level?: string | null
           title?: string | null
+          updated_at?: string
           user_id?: string
           web_search?: boolean
         }
         Update: {
+          cancel_requested?: boolean
           canvas_h?: number
           canvas_w?: number
           canvas_x?: number
@@ -303,9 +312,12 @@ export type Database = {
           prompt_tokens?: number | null
           provider?: string
           response?: string
+          run_id?: string | null
           status?: string
+          stream_token?: string | null
           thinking_level?: string | null
           title?: string | null
+          updated_at?: string
           user_id?: string
           web_search?: boolean
         }

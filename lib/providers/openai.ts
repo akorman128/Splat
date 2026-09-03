@@ -84,8 +84,12 @@ function toResponsesInput(
 async function* runChat(
   apiKey: string,
   params: OpenAI.Responses.ResponseCreateParamsStreaming,
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const stream = await client(apiKey).responses.create(params);
+  const stream = await client(apiKey).responses.create(
+    params,
+    signal ? { signal } : undefined,
+  );
 
   let usage: { promptTokens: number | null; completionTokens: number | null } = {
     promptTokens: null,
@@ -142,6 +146,7 @@ export const openaiAdapter: ProviderAdapter = {
     system,
     thinking,
     webSearch,
+    signal,
   }): AsyncGenerator<StreamEvent> {
     // No max_output_tokens: OpenAI's model list publishes no per-model ceiling,
     // and a fixed one is a 400 on every model whose own ceiling is lower than
@@ -159,6 +164,7 @@ export const openaiAdapter: ProviderAdapter = {
       webSearch
         ? { ...params, tools: await webSearchTools(apiKey, model) }
         : params,
+      signal,
     );
   },
 

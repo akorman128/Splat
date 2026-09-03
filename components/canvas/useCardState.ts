@@ -21,9 +21,12 @@ export function useCardState(nodeId: string | null) {
   );
 
   const isStreaming = node?.status === "streaming";
+  // Two sources now feed a running card: deltas from the stream this client
+  // opened, and the row itself pushed over Realtime for clients that have none.
+  // Whichever is further along is the one that has seen more of the answer.
   const responseText = !node
     ? ""
-    : isStreaming && streaming !== undefined
+    : isStreaming && streaming !== undefined && streaming.length > node.response.length
       ? streaming
       : node.response;
 
