@@ -126,7 +126,7 @@ export function AppSidebar({
       .eq("id", pendingDelete.id);
     setDeleting(false);
     if (error) {
-      toast.error("Could not delete conversation", {
+      toast.error("Could not delete canvas", {
         description: error.message,
       });
       return;
@@ -155,7 +155,7 @@ export function AppSidebar({
         .update({ title })
         .eq("id", c.id);
       if (error) {
-        toast.error("Could not rename conversation", {
+        toast.error("Could not rename canvas", {
           description: error.message,
         });
         return;
@@ -187,7 +187,7 @@ export function AppSidebar({
           render={<Link href="/c/new" />}
         >
           <Plus className="size-4" />
-          New conversation
+          New canvas
         </Button>
       </SidebarHeader>
       <SidebarContent>
@@ -229,7 +229,7 @@ export function AppSidebar({
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Conversations</SidebarGroupLabel>
+          <SidebarGroupLabel>Canvases</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {shown.length === 0 && (
@@ -249,7 +249,7 @@ export function AppSidebar({
                       <SidebarInput
                         autoFocus
                         maxLength={120}
-                        aria-label="Conversation title"
+                        aria-label="Canvas title"
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
                         onFocus={(event) => event.currentTarget.select()}
@@ -282,9 +282,7 @@ export function AppSidebar({
                           }
                         >
                           <MoreHorizontal />
-                          <span className="sr-only">
-                            Conversation options
-                          </span>
+                          <span className="sr-only">Canvas options</span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           side="right"
@@ -365,13 +363,13 @@ export function AppSidebar({
         onOpenChange={(open) => {
           if (!open && !deleting) setPendingDelete(null);
         }}
-        title="Delete conversation?"
+        title="Delete canvas?"
         description={
           <>
             <span className="font-medium text-foreground">
               {pendingDelete?.title}
             </span>{" "}
-            and every card on its canvas will be deleted. This cannot be undone.
+            and every card on it will be deleted. This cannot be undone.
           </>
         }
         confirmLabel={deleting ? "Deleting…" : "Delete"}

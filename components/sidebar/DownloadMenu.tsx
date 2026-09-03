@@ -51,13 +51,13 @@ export function DownloadMenu({ conversationId }: { conversationId: string }) {
       const file = await fileFor(conversationId, format);
       if (!file) {
         toast.error("Nothing to download", {
-          description: "This conversation has no cards yet.",
+          description: "This canvas has no cards yet.",
         });
         return;
       }
       downloadBlob(file.blob, file.name);
     } catch (error) {
-      toast.error("Could not download conversation", {
+      toast.error("Could not download canvas", {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
