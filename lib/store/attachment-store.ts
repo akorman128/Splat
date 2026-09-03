@@ -9,6 +9,7 @@ import {
   downscaleImage,
   isResizable,
   nameForPastedFile,
+  reuseAttachments,
   uploadAttachment,
 } from "@/lib/attachments-client";
 import { useGraphStore } from "@/lib/store/graph-store";
@@ -19,11 +20,13 @@ import {
   classify,
   sizeCapMessage,
 } from "@/lib/attachments/types";
-import type { CardAttachment } from "@/lib/types";
+import type { CardAttachment, LibraryAttachment } from "@/lib/types";
 
 export type DraftAttachment = {
   localId: string;
   filename: string;
+  // The library row this draft was copied from, null when it came off the disk.
+  sourceId: string | null;
   status: "uploading" | "ready" | "error";
   progress: number;
   error: string | null;
@@ -33,6 +36,7 @@ export type DraftAttachment = {
 type AttachmentState = {
   drafts: DraftAttachment[];
   enqueue(files: File[], options?: { synthesiseNames?: boolean }): void;
+  reuse(items: LibraryAttachment[]): void;
   remove(localId: string): void;
   released(sentAttachmentIds: string[]): void;
   reset(): void;
@@ -119,6 +123,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
           {
             localId: id,
             filename: named.name,
+            sourceId: null,
             status: "uploading",
             progress: 0,
             error: null,
@@ -129,6 +134,49 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
 
       void start(id, named, cap);
     }
+  },
+
+  reuse(items) {
+    if (items.length === 0) return;
+
+    if (useComposerStore.getState().regenerateNodeId) {
+      toast.error("Finish or cancel the regeneration before attaching a file.");
+      return;
+    }
+
+    const already = new Set(
+      get().drafts.map((d) => d.sourceId).filter((id) => id !== null),
+    );
+    const fresh = items.filter((item) => !already.has(item.id));
+    if (fresh.length === 0) return;
+
+    const room = MAX_ATTACHMENTS_PER_TURN - get().drafts.length;
+    if (room <= 0) {
+      toast.error(`You can attach up to ${MAX_ATTACHMENTS_PER_TURN} files.`);
+      return;
+    }
+    const accepted = fresh.slice(0, room);
+    if (accepted.length < fresh.length) {
+      toast.error(`Only the first ${room} of those files were attached.`);
+    }
+
+    const entries = accepted.map((item) => ({ localId: localId(), item }));
+    set((state) => ({
+      drafts: [
+        ...state.drafts,
+        ...entries.map(({ localId: id, item }) => ({
+          localId: id,
+          filename: item.filename,
+          sourceId: item.id,
+          status: "uploading" as const,
+          progress: 0,
+          error: null,
+          attachment: null,
+        })),
+      ],
+    }));
+
+    void copy(entries);
   },
 
   remove(id) {
@@ -219,6 +267,50 @@ async function start(id: string, file: File, cap: number): Promise<void> {
     });
   } finally {
     aborts.delete(id);
+  }
+}
+
+// One request for the batch: the bytes are copied inside the bucket, so there is
+// no per-file progress to report and nothing to abort part-way.
+async function copy(
+  entries: { localId: string; item: LibraryAttachment }[],
+): Promise<void> {
+  let conversationId: string;
+  try {
+    conversationId = await ensureConversation();
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not start a conversation";
+    for (const entry of entries) {
+      patch(entry.localId, { status: "error", error: message });
+    }
+    return;
+  }
+
+  const wanted = entries.filter((entry) => live(entry.localId));
+  if (wanted.length === 0) return;
+
+  try {
+    const copies = await reuseAttachments(
+      conversationId,
+      wanted.map((entry) => entry.item.id),
+    );
+    copies.forEach((attachment, index) => {
+      const id = wanted[index].localId;
+      // Removed while the copy was in flight: the new row is a draft nothing
+      // points at, so it goes back out rather than waiting for the sweep.
+      if (!live(id)) {
+        void deleteAttachment(attachment.id).catch(() => {});
+        return;
+      }
+      patch(id, { status: "ready", progress: 1, attachment });
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not attach that file";
+    for (const entry of wanted) {
+      patch(entry.localId, { status: "error", error: message });
+    }
   }
 }
 
