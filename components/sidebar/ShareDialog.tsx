@@ -75,7 +75,7 @@ export function ShareDialog({
         onTokenChange(null);
         router.refresh();
         toast.success("Sharing stopped", {
-          description: "The old link no longer opens this conversation.",
+          description: "The old link no longer opens this canvas.",
         });
       } catch (error) {
         toast.error("Could not stop sharing", {
@@ -99,7 +99,7 @@ export function ShareDialog({
     <Dialog open={conversation !== null} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Share conversation</DialogTitle>
+          <DialogTitle>Share canvas</DialogTitle>
           <DialogDescription>
             Anyone with the link can view{" "}
             <span className="font-medium text-foreground">
