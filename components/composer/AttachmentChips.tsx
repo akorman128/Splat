@@ -11,11 +11,15 @@ type Detail = { text: string; title: string; warn: boolean };
 
 function detailOf(draft: DraftAttachment): Detail {
   if (draft.status === "uploading") {
-    return {
-      text: `${Math.round(draft.progress * 100)}%`,
-      title: "Uploading…",
-      warn: false,
-    };
+    // A reused file is copied inside the bucket, so there is no percentage to
+    // count up to.
+    return draft.sourceId
+      ? { text: "attaching…", title: "Attaching a file you uploaded before", warn: false }
+      : {
+          text: `${Math.round(draft.progress * 100)}%`,
+          title: "Uploading…",
+          warn: false,
+        };
   }
   if (draft.status === "error" || !draft.attachment) {
     const message = draft.error ?? "Upload failed";
@@ -82,7 +86,7 @@ export function AttachmentChips() {
               <X className="size-3" />
               <span className="sr-only">Remove {draft.filename}</span>
             </button>
-            {draft.status === "uploading" && (
+            {draft.status === "uploading" && !draft.sourceId && (
               <span
                 className="absolute inset-x-0 bottom-0 h-0.5 bg-primary/60 transition-[width]"
                 style={{ width: `${Math.round(draft.progress * 100)}%` }}

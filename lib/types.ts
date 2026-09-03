@@ -30,6 +30,12 @@ export type CardAttachment = Omit<
   "user_id" | "storage_path" | "extracted_text"
 >;
 
+
+export type LibraryAttachment = CardAttachment & {
+  conversation_title: string | null;
+};
+
+
 export type SharedConversation = {
   conversation: {
     id: string;

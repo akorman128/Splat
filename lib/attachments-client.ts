@@ -3,8 +3,11 @@
 import { apiFetch, postJson } from "@/lib/query/api";
 import { createClient } from "@/lib/supabase/client";
 import { selectAllPages } from "@/lib/supabase/pagination";
-import { ATTACHMENTS_BUCKET } from "@/lib/attachments/types";
-import type { CardAttachment } from "@/lib/types";
+import {
+  ATTACHMENTS_BUCKET,
+  CARD_ATTACHMENT_COLUMNS,
+} from "@/lib/attachments/types";
+import type { CardAttachment, LibraryAttachment } from "@/lib/types";
 
 const MAX_IMAGE_DIMENSION = 1568;
 
@@ -70,6 +73,52 @@ export async function createConversation(): Promise<string> {
     postJson({}),
   );
   return id;
+}
+
+const LIBRARY_LIMIT = 200;
+
+// Claimed files only: a draft is either a chip in the composer right now or one
+// the sweep is about to reclaim, and neither is worth offering back.
+export async function fetchAttachmentLibrary(): Promise<LibraryAttachment[]> {
+  const { data, error } = await createClient()
+    .from("attachments")
+    .select(`${CARD_ATTACHMENT_COLUMNS}, conversations(title)`)
+    .not("node_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(LIBRARY_LIMIT);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as unknown as (CardAttachment & {
+    conversations: { title: string } | null;
+  })[];
+
+  // The whole point of the picker is the file sent five times over; it is one
+  // entry, and the newest row is the one that gets copied.
+  const seen = new Set<string>();
+  const library: LibraryAttachment[] = [];
+  for (const row of rows) {
+    const key = `${row.filename}\u0000${row.byte_size}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const { conversations, ...attachment } = row;
+    library.push({
+      ...attachment,
+      conversation_title: conversations?.title ?? null,
+    });
+  }
+  return library;
+}
+
+// Answered positionally: one new draft per id, in the order asked for.
+export async function reuseAttachments(
+  conversationId: string,
+  ids: string[],
+): Promise<CardAttachment[]> {
+  const { attachments } = await apiFetch<{ attachments: CardAttachment[] }>(
+    "/api/attachments/reuse",
+    postJson({ conversationId, ids }),
+  );
+  return attachments;
 }
 
 export async function deleteAttachment(id: string): Promise<void> {

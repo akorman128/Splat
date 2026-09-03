@@ -7,13 +7,21 @@ import { toast } from "sonner";
 import {
   ArrowUp,
   ChevronDown,
+  Clock,
   GitBranch,
   Paperclip,
   RefreshCw,
   Sparkles,
+  Upload,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -28,6 +36,7 @@ import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
 import { SkillMenu, matchSkills, skillTriggerAt, type SkillTrigger } from "./SkillMenu";
 import { AttachmentChips } from "./AttachmentChips";
+import { AttachmentLibrary } from "./AttachmentLibrary";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import {
@@ -100,6 +109,7 @@ export function Composer({
     Record<string, boolean>
   >({});
   const [dragging, setDragging] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -658,15 +668,34 @@ export function Composer({
                 e.target.value = "";
               }}
             />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title="Attach a file (or drop one anywhere on the canvas)"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Paperclip />
-              <span className="sr-only">Attach a file</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Attach a file (or drop one anywhere on the canvas)"
+                  />
+                }
+              >
+                <Paperclip />
+                <span className="sr-only">Attach a file</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-52">
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="size-4" />
+                  Upload from this device
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setLibraryOpen(true)}>
+                  <Clock className="size-4" />
+                  Attach an earlier file
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <AttachmentLibrary
+              open={libraryOpen}
+              onOpenChange={setLibraryOpen}
+            />
           </>
         )}
         <Select
