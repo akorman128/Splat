@@ -3,9 +3,10 @@
 import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Maximize2, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, Maximize2, RefreshCw, Square, Trash2 } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import { useStopStream } from "@/lib/chat-client";
 import { estimateTokens } from "@/lib/tokens";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
@@ -40,6 +41,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const isRegenerateTarget = useComposerStore(
     (s) => s.regenerateNodeId === nodeId,
   );
+  const stopStream = useStopStream();
 
   if (!node) {
     return (
@@ -67,6 +69,18 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           <span className="flex-1 truncate text-lg font-semibold">
             {node.title ?? (isStreaming ? "Thinking…" : "Untitled")}
           </span>
+          {isStreaming && !readOnly && (
+            <button
+              type="button"
+              title="Stop generating"
+              disabled={stopStream.isPending}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+              onPointerDown={stop}
+              onClick={() => stopStream.mutate(nodeId)}
+            >
+              <Square className="size-3.5" />
+            </button>
+          )}
           {!isStreaming && !readOnly && (
             <button
               type="button"

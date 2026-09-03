@@ -59,6 +59,9 @@ export interface ProviderAdapter {
     system?: string;
     thinking?: ThinkingLevel | null;
     webSearch?: boolean;
+    // Aborting tears the provider request down; the adapter surfaces it as a
+    // thrown error, and the caller supplies the reason it wants to see.
+    signal?: AbortSignal;
   }): AsyncGenerator<StreamEvent>;
 
   generateFollowups(opts: {

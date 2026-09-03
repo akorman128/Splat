@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { currentUser } from "@/lib/supabase/dal";
 import { decryptSecret } from "@/lib/crypto";
@@ -24,6 +24,7 @@ import {
   resolveSkillIds,
   skillSystemPrompt,
 } from "@/lib/skills/attachments";
+import { reclaimStaleStreams } from "@/lib/streams/reclaim";
 import {
   TURN_ATTACHMENT_COLUMNS,
   assembleMessages,
@@ -45,6 +46,22 @@ import type {
 } from "@/lib/types";
 
 export const maxDuration = 300;
+
+// Vercel kills the invocation at maxDuration with no chance to write anything:
+// the row stays streaming and the response body simply stops, which a reader
+// cannot tell from a clean finish. Stopping a little short of the ceiling turns
+// that into an ordinary failure — persisted on the card, sent down the stream —
+// and the margin is what the error write needs to land.
+const DEADLINE_MS = (maxDuration - 15) * 1000;
+
+const DEADLINE_MESSAGE =
+  "Generation ran past the 5 minute limit for a single request and was stopped. A large attachment is the usual cause.";
+
+const STOPPED_MESSAGE = "Stopped at your request.";
+
+// How often the run listens for a Stop, and for the fence moving to another
+// run. Cheap — one indexed select — but not free, so not every second.
+const CANCEL_POLL_MS = 2500;
 
 type NewChatBody = {
   conversationId: string | null;
@@ -142,6 +159,9 @@ async function webSearchAllowed(
 }
 
 export async function POST(request: Request) {
+  // The ceiling covers the whole invocation, so the clock starts here rather
+  // than where the stream does — everything below still has to fit under it.
+  const deadlineAt = Date.now() + DEADLINE_MS;
   const supabase = await createClient();
   const user = await currentUser();
   if (!user) {
@@ -168,17 +188,34 @@ export async function POST(request: Request) {
   let inline: Map<string, ContentPart> = new Map();
   let claimedAttachments: CardAttachment[] = [];
 
+  // Minted before either branch writes: the claim below stamps it on the row,
+  // and every write this run makes must present it. See lib/streams/stale.ts
+  // and migration 20260903000012 for why.
+  const streamToken = crypto.randomUUID();
+
   const rerunNodeId = body.retryNodeId ?? body.regenerateNodeId;
 
   if (rerunNodeId) {
     const regenerating = !body.retryNodeId;
-    const { data: existing } = await supabase
+    let { data: existing } = await supabase
       .from("nodes")
       .select("*")
       .eq("id", rerunNodeId)
       .maybeSingle();
     if (!existing) {
       return NextResponse.json({ error: "Node not found" }, { status: 404 });
+    }
+    // A card left claiming a stream by a run that died is retryable, not "already
+    // streaming" — reclaiming it here is what makes the answer below the right
+    // one, since nothing else will ever clear that claim.
+    if (existing.status === "streaming") {
+      await reclaimStaleStreams(supabase, existing.conversation_id);
+      const { data: reread } = await supabase
+        .from("nodes")
+        .select("*")
+        .eq("id", rerunNodeId)
+        .maybeSingle();
+      if (reread) existing = reread;
     }
     const rerunnable = regenerating ? ["complete", "error"] : ["error"];
     if (!rerunnable.includes(existing.status)) {
@@ -343,6 +380,8 @@ export async function POST(request: Request) {
         response: "",
         status: "streaming",
         error_message: null,
+        stream_token: streamToken,
+        cancel_requested: false,
       })
       .eq("id", existing.id)
       .in("status", rerunnable)
@@ -597,6 +636,7 @@ export async function POST(request: Request) {
         thinking_level: thinking.level,
         web_search: toWebSearch(body.webSearch),
         status: "streaming",
+        stream_token: streamToken,
         canvas_x: typeof body.canvasX === "number" ? body.canvasX : 0,
         canvas_y: typeof body.canvasY === "number" ? body.canvasY : 0,
       })
@@ -719,123 +759,209 @@ export async function POST(request: Request) {
 
   const adapter = getAdapter(provider);
   const encoder = new TextEncoder();
-  let cancelled = false;
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (obj: unknown) => {
-        if (cancelled) return;
-        try {
-          controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
-        } catch {
-          cancelled = true;
-        }
-      };
+  // The response below is a window onto the run, not the run itself: events
+  // reach the browser while it is watching and fall on the floor once it is
+  // gone. The backlog holds what is emitted before the stream's start callback
+  // wires in the controller.
+  let push: ((obj: unknown) => void) | null = null;
+  let watching = true;
+  const backlog: unknown[] = [];
+  const emit = (obj: unknown) => {
+    if (!watching) return;
+    if (push) push(obj);
+    else backlog.push(obj);
+  };
 
-      send({
-        type: "node",
-        node,
-        edges: nodeEdges,
-        attachments: claimedAttachments,
-      });
+  emit({
+    type: "node",
+    node,
+    edges: nodeEdges,
+    attachments: claimedAttachments,
+  });
 
-      let accumulated = "";
-      const citations: Citation[] = [];
-      let flushedLength = 0;
-      let lastFlushAt = Date.now();
-      let usage: { promptTokens: number | null; completionTokens: number | null } =
-        { promptTokens: null, completionTokens: null };
+  const generation = (async () => {
+    let accumulated = "";
+    const citations: Citation[] = [];
+    let flushedLength = 0;
+    let lastFlushAt = Date.now();
+    let usage: { promptTokens: number | null; completionTokens: number | null } =
+      { promptTokens: null, completionTokens: null };
 
-      const maybeFlush = async () => {
-        if (
-          accumulated.length - flushedLength >= 500 ||
-          (Date.now() - lastFlushAt >= 2000 && accumulated.length > flushedLength)
-        ) {
-          flushedLength = accumulated.length;
-          lastFlushAt = Date.now();
-          await supabase
-            .from("nodes")
-            .update({ response: accumulated })
-            .eq("id", node.id);
-        }
-      };
+    // One abort serves three verdicts — the deadline, a Stop pressed in the
+    // UI, and the fence moving to another run. Whoever aborts first names the
+    // failure; the fence case writes nothing at all.
+    const aborter = new AbortController();
+    let abortMessage: string | null = null;
+    let superseded = false;
+    const abortWith = (message: string) => {
+      if (abortMessage === null) {
+        abortMessage = message;
+        aborter.abort();
+      }
+    };
 
-      try {
-        for await (const event of adapter.streamChat({
-          apiKey,
-          model: node.model,
-          messages,
-          system,
-          thinking: toThinkingLevel(node.thinking_level),
-          webSearch: node.web_search,
-        })) {
-          if (cancelled) {
-            throw new Error("Generation interrupted: connection closed");
+    // Raced by nothing: the signal interrupts the provider read directly, so a
+    // model that goes silent for minutes is still stopped on time.
+    let lastPoll = Date.now();
+    let polling = false;
+    const watchdog = setInterval(() => {
+      if (Date.now() >= deadlineAt) {
+        abortWith(DEADLINE_MESSAGE);
+        return;
+      }
+      // The poll is what hears a Stop now that no connection ties the user to
+      // this run — and what notices another run has claimed the card, which is
+      // the cue to stop paying for tokens nothing will keep.
+      if (polling || Date.now() - lastPoll < CANCEL_POLL_MS) return;
+      polling = true;
+      lastPoll = Date.now();
+      void supabase
+        .from("nodes")
+        .select("cancel_requested, stream_token")
+        .eq("id", node.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data && data.stream_token !== streamToken) {
+            superseded = true;
+            abortWith("Superseded by a newer run");
+          } else if (data?.cancel_requested) {
+            abortWith(STOPPED_MESSAGE);
           }
-          if (event.type === "delta") {
-            accumulated += event.text;
-            send({ type: "delta", text: event.text });
-            await maybeFlush();
-          } else if (event.type === "citation") {
-            citations.push({ title: event.title, url: event.url });
-          } else if (event.type === "usage") {
-            usage = {
-              promptTokens: event.promptTokens,
-              completionTokens: event.completionTokens,
-            };
-          }
-        }
+        })
+        .then(
+          () => {
+            polling = false;
+          },
+          () => {
+            polling = false;
+          },
+        );
+    }, 1000);
 
-        // Part of the answer rather than a column of its own, so it exports,
-        // shares and re-renders with the rest of it.
-        const sources = citationsMarkdown(citations);
-        if (sources) {
-          accumulated += sources;
-          send({ type: "delta", text: sources });
-        }
-
-        const completed = {
-          response: accumulated,
-          status: "complete" as const,
-          error_message: null,
-          prompt_tokens: usage.promptTokens,
-          completion_tokens: usage.completionTokens,
-        };
-        const { data: finalNode } = await supabase
+    const maybeFlush = async () => {
+      if (
+        accumulated.length - flushedLength >= 500 ||
+        (Date.now() - lastFlushAt >= 2000 && accumulated.length > flushedLength)
+      ) {
+        flushedLength = accumulated.length;
+        lastFlushAt = Date.now();
+        // Fenced: a flush from a run that lost the card matches nothing.
+        await supabase
           .from("nodes")
-          .update(completed)
+          .update({ response: accumulated })
           .eq("id", node.id)
-          .select()
-          .maybeSingle();
-        send({ type: "done", node: finalNode ?? { ...node, ...completed } });
-      } catch (err) {
+          .eq("stream_token", streamToken);
+      }
+    };
+
+    try {
+      for await (const event of adapter.streamChat({
+        apiKey,
+        model: node.model,
+        messages,
+        system,
+        thinking: toThinkingLevel(node.thinking_level),
+        webSearch: node.web_search,
+        signal: aborter.signal,
+      })) {
+        if (event.type === "delta") {
+          accumulated += event.text;
+          emit({ type: "delta", text: event.text });
+          await maybeFlush();
+        } else if (event.type === "citation") {
+          citations.push({ title: event.title, url: event.url });
+        } else if (event.type === "usage") {
+          usage = {
+            promptTokens: event.promptTokens,
+            completionTokens: event.completionTokens,
+          };
+        }
+      }
+
+      // Part of the answer rather than a column of its own, so it exports,
+      // shares and re-renders with the rest of it.
+      const sources = citationsMarkdown(citations);
+      if (sources) {
+        accumulated += sources;
+        emit({ type: "delta", text: sources });
+      }
+
+      const completed = {
+        response: accumulated,
+        status: "complete" as const,
+        error_message: null,
+        prompt_tokens: usage.promptTokens,
+        completion_tokens: usage.completionTokens,
+      };
+      const { data: finalNode } = await supabase
+        .from("nodes")
+        .update(completed)
+        .eq("id", node.id)
+        .eq("stream_token", streamToken)
+        .select()
+        .maybeSingle();
+      // Null means the fence moved while the answer was landing: the card
+      // belongs to a newer run and this one has nothing left to say.
+      if (finalNode) emit({ type: "done", node: finalNode });
+    } catch (err) {
+      if (!superseded) {
         const message =
-          err instanceof Error ? err.message : "Generation failed";
+          abortMessage ??
+          (err instanceof Error ? err.message : "Generation failed");
         const errored = {
           response: accumulated,
           status: "error" as const,
           error_message: message,
         };
-        const { data: errorNode } = await supabase
-          .from("nodes")
-          .update(errored)
-          .eq("id", node.id)
-          .select()
-          .maybeSingle();
-        send({
-          type: "error",
-          message,
-          node: errorNode ?? { ...node, ...errored },
-        });
-      } finally {
+        // Nothing above this may escape: this promise is what after() waits on
+        // and what closes the response, and a throw here would be an unhandled
+        // rejection rather than a card left in a known state.
+        try {
+          const { data: errorNode } = await supabase
+            .from("nodes")
+            .update(errored)
+            .eq("id", node.id)
+            .eq("stream_token", streamToken)
+            .select()
+            .maybeSingle();
+          if (errorNode) emit({ type: "error", message, node: errorNode });
+        } catch {
+        }
+      }
+    } finally {
+      clearInterval(watchdog);
+    }
+  })();
+
+  // What detaches the run from the response: the invocation now outlives the
+  // stream below, so a closed tab or a dropped connection no longer takes the
+  // generation down with it. The row is the record; the client re-reads it
+  // through /api/chat/stream.
+  after(() => generation);
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      push = (obj: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+        } catch {
+          watching = false;
+          push = null;
+        }
+      };
+      for (const obj of backlog.splice(0)) push?.(obj);
+      const close = () => {
         try {
           controller.close();
         } catch {
         }
-      }
+      };
+      generation.then(close, close);
     },
     cancel() {
-      cancelled = true;
+      watching = false;
+      push = null;
     },
   });
 

@@ -109,6 +109,7 @@ async function* runChat(
   params: ChatParams,
   messages: Anthropic.MessageParam[],
   tools?: Anthropic.ToolUnion[],
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   const history = [...messages];
   // Null until a leg reports one, so a card whose counts never arrived still
@@ -117,11 +118,14 @@ async function* runChat(
   let completionTokens: number | null = null;
 
   for (let turn = 0; ; turn++) {
-    const stream = client(apiKey).messages.stream({
-      ...params,
-      messages: history,
-      ...(tools ? { tools } : {}),
-    });
+    const stream = client(apiKey).messages.stream(
+      {
+        ...params,
+        messages: history,
+        ...(tools ? { tools } : {}),
+      },
+      signal ? { signal } : undefined,
+    );
 
     for await (const event of stream) {
       if (event.type !== "content_block_delta") continue;
@@ -204,6 +208,7 @@ export const anthropicAdapter: ProviderAdapter = {
     system,
     thinking,
     webSearch,
+    signal,
   }): AsyncGenerator<StreamEvent> {
     const params = {
       model,
@@ -217,6 +222,7 @@ export const anthropicAdapter: ProviderAdapter = {
       params,
       toAnthropic(messages),
       webSearch ? await webSearchTools(apiKey, model) : undefined,
+      signal,
     );
   },
 

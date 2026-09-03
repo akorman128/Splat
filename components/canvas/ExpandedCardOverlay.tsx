@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ArrowUp,
   RefreshCw,
+  Square,
   Trash2,
   XIcon,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
+import { useStopStream } from "@/lib/chat-client";
 import { neighboursOf } from "@/lib/graph/neighbours";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
@@ -86,6 +88,7 @@ export function ExpandedCardOverlay() {
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
+  const stopStream = useStopStream();
   const { node, responseText, contextCount, attachments, isError, isStreaming } =
     useCardState(expandedNodeId);
 
@@ -233,6 +236,17 @@ export function ExpandedCardOverlay() {
             <span className="ml-auto">
               {new Date(node.created_at).toLocaleString()}
             </span>
+            {isStreaming && !readOnly && (
+              <button
+                type="button"
+                disabled={stopStream.isPending}
+                onClick={() => stopStream.mutate(node.id)}
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                <Square className="size-3" />
+                Stop
+              </button>
+            )}
             {!isStreaming && !readOnly && (
               <button
                 type="button"
