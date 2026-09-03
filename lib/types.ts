@@ -30,7 +30,6 @@ export type CardAttachment = Omit<
   "user_id" | "storage_path" | "extracted_text"
 >;
 
-// The payload of the shared_conversation() RPC.
 export type SharedConversation = {
   conversation: {
     id: string;

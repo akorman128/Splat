@@ -265,8 +265,6 @@ export async function POST(request: Request) {
         }
         rerunFields.thinking_level = level.level;
       }
-      // Absent leaves the card on whatever it already carries, like the level
-      // above; a retry replays the card untouched either way.
       if (body.webSearch !== undefined) {
         rerunFields.web_search = toWebSearch(body.webSearch);
       }
@@ -314,8 +312,6 @@ export async function POST(request: Request) {
     }
     apiKey = rerunKey.apiKey;
 
-    // Only a regenerate can change the model; a retry replays what the card
-    // already holds, and the catalogue is read with the key that will send it.
     if (
       regenerating &&
       !(await isKnownCatalogModel(rerunProvider, rerunModel, apiKey))

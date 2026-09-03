@@ -5,8 +5,6 @@ export type OutlineEntry = { id: string; depth: number };
 const byCreation = (a: GraphNodeRef, b: GraphNodeRef) =>
   a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);
 
-// The canvas order, flattened: each root followed by the branches under it, so
-// a list of titles reads the way the arrows on the canvas run.
 export function outlineOrder(nodes: GraphNodeRef[]): OutlineEntry[] {
   const known = new Set(nodes.map((n) => n.id));
   const childrenOf = new Map<string | null, GraphNodeRef[]>();

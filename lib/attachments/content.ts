@@ -12,8 +12,6 @@ import {
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-// The one shape that carries extracted_text; everything on the canvas uses
-// CardAttachment instead.
 export type TurnAttachment = {
   id: string;
   node_id: string | null;
@@ -136,7 +134,6 @@ export type InlineLoad =
   | { ok: true; inline: Map<string, ContentPart> }
   | { ok: false; status: number; error: string };
 
-// The files that travel as their own bytes rather than as extracted text.
 function sentWhole(attachments: TurnAttachment[]): TurnAttachment[] {
   return attachments.filter(
     (a) =>

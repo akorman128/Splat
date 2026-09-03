@@ -32,7 +32,6 @@ export async function generateMetadata({
     description: `A shared Splat canvas: ${shared.nodes.length} card${
       shared.nodes.length === 1 ? "" : "s"
     } of prompts and answers, and how they branch.`,
-    // A share link is unlisted, not published.
     robots: { index: false, follow: false },
   };
 }

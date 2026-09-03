@@ -182,7 +182,6 @@ export const openaiAdapter: ProviderAdapter = {
     try {
       return await call(MODELS.openai.utility);
     } catch (err) {
-      // The card's own model, unless that is the one that just failed.
       const fallback =
         model && model !== MODELS.openai.utility
           ? model
