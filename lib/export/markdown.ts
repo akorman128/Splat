@@ -1,10 +1,10 @@
 import { topoOrder } from "@/lib/graph/topo-order";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
-import type { NodeRow } from "@/lib/types";
+import type { CardNode } from "@/lib/types";
 import type { ConversationExport } from "./conversation";
 
-export function cardTitle(node: NodeRow): string {
+export function cardTitle(node: CardNode): string {
   return node.title?.trim() || "Untitled";
 }
 
@@ -15,6 +15,26 @@ function blockquote(text: string): string {
     .split("\n")
     .map((line) => (line.trim() ? `> ${line}` : ">"))
     .join("\n");
+}
+
+function missingResponse(node: CardNode): string {
+  if (node.status === "error") {
+    return `_Interrupted: ${node.error_message ?? "the answer never arrived."}_`;
+  }
+  return "_No response yet._";
+}
+
+// One card on its own, for the clipboard: no numbering or cross-references,
+// since the cards they point at are not coming along.
+export function cardMarkdown(node: CardNode, response: string): string {
+  return [
+    `## ${cardTitle(node)}`,
+    "",
+    blockquote(node.prompt),
+    "",
+    response.trim() || missingResponse(node),
+    "",
+  ].join("\n");
 }
 
 export function toMarkdown({
@@ -87,16 +107,7 @@ export function toMarkdown({
     );
 
     const response = node.response.trim();
-    if (response) {
-      lines.push(response, "");
-    } else if (node.status === "error") {
-      lines.push(
-        `_Interrupted: ${node.error_message ?? "the answer never arrived."}_`,
-        "",
-      );
-    } else {
-      lines.push("_No response yet._", "");
-    }
+    lines.push(response || missingResponse(node), "");
   }
 
   return lines.join("\n");

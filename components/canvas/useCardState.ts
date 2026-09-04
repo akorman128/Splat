@@ -1,7 +1,7 @@
 "use client";
 
 import { useGraphStore } from "@/lib/store/graph-store";
-import { useStreamStore } from "@/lib/store/stream-store";
+import { responseTextFor, useStreamStore } from "@/lib/store/stream-store";
 import type { CardAttachment } from "@/lib/types";
 
 // Shared so a card with no files keeps returning the same reference — `?? []`
@@ -20,22 +20,12 @@ export function useCardState(nodeId: string | null) {
     nodeId ? s.streams[nodeId] : undefined,
   );
 
-  const isStreaming = node?.status === "streaming";
-  // Two sources now feed a running card: deltas from the stream this client
-  // opened, and the row itself pushed over Realtime for clients that have none.
-  // Whichever is further along is the one that has seen more of the answer.
-  const responseText = !node
-    ? ""
-    : isStreaming && streaming !== undefined && streaming.length > node.response.length
-      ? streaming
-      : node.response;
-
   return {
     node,
-    responseText,
+    responseText: responseTextFor(node, streaming),
     contextCount,
     attachments,
-    isStreaming: Boolean(isStreaming),
+    isStreaming: Boolean(node?.status === "streaming"),
     isError: node?.status === "error",
   };
 }

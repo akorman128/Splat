@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  Copy,
   RefreshCw,
   Square,
   Trash2,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { useStopStream } from "@/lib/chat-client";
+import { copyCard } from "@/lib/export/copy-card";
 import { neighboursOf } from "@/lib/graph/neighbours";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
@@ -236,6 +238,14 @@ export function ExpandedCardOverlay() {
             <span className="ml-auto">
               {new Date(node.created_at).toLocaleString()}
             </span>
+            <button
+              type="button"
+              onClick={() => copyCard(node.id)}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium hover:bg-accent hover:text-foreground"
+            >
+              <Copy className="size-3" />
+              Copy
+            </button>
             {isStreaming && !readOnly && (
               <button
                 type="button"
