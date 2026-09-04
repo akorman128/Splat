@@ -157,7 +157,6 @@ async function loadOpenAI(apiKey: string): Promise<CatalogModel[]> {
 }
 
 type Source = {
-  // Whether the list depends on whose key asked for it.
   keyed: boolean;
   load(apiKey: string): Promise<CatalogModel[]>;
 };

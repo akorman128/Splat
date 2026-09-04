@@ -4,9 +4,8 @@ import { ConversationShell } from "@/components/canvas/ConversationShell";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
 import type { Provider } from "@/lib/providers/models";
 
-// Holds the canvas still while the page below it changes. None of these
-// depends on which conversation is open, so they are read once here rather than
-// again on every hop between conversations.
+// None of these depends on which conversation is open, so they are read once
+// here rather than again on every hop between conversations.
 export default async function ConversationLayout({
   children,
 }: {
@@ -32,7 +31,6 @@ export default async function ConversationLayout({
       skills={(skills ?? []) satisfies SkillSummary[]}
       webSearchDefault={profile?.web_search ?? true}
     >
-      {/* Lets a cold load paint the shell instead of waiting on the page's queries. */}
       <Suspense fallback={null}>{children}</Suspense>
     </ConversationShell>
   );

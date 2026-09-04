@@ -230,7 +230,6 @@ export function sentAsPages(attachment: {
   return attachment.kind === "pdf" && attachment.extract_status === "empty";
 }
 
-// Null when the file's contents will reach the model one way or another.
 export function missingTextNotice(attachment: {
   kind: string;
   extract_status: string;

@@ -30,13 +30,12 @@ export type CardAttachment = Omit<
   "user_id" | "storage_path" | "extracted_text"
 >;
 
-// A file the user has already uploaded, offered back in the composer's picker
-// so the same bytes never have to travel twice.
+
 export type LibraryAttachment = CardAttachment & {
   conversation_title: string | null;
 };
 
-// The payload of the shared_conversation() RPC.
+
 export type SharedConversation = {
   conversation: {
     id: string;

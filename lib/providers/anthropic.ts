@@ -242,7 +242,6 @@ export const anthropicAdapter: ProviderAdapter = {
     try {
       return await call(MODELS.anthropic.utility);
     } catch (err) {
-      // The card's own model, unless that is the one that just failed.
       const fallback =
         model && model !== MODELS.anthropic.utility
           ? model

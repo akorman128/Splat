@@ -12,7 +12,6 @@ import type {
   SuggestionRow,
 } from "@/lib/types";
 
-// Draws nothing: it hands the route's rows to the store the shell renders from.
 // Being the page rather than the shell is the point — this is the only thing
 // that unmounts when a draft turns into a conversation.
 export function GraphHydrator({
