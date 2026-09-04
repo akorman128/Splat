@@ -25,6 +25,14 @@ type GraphState = {
   expandedNodeId: string | null;
   deletingNodeIds: string[];
   focusNodeId: string | null;
+  chatOpen: boolean;
+  // The card the chat view draws its thread through. The canvas selection is
+  // deliberately not used for this: the chat would otherwise move it, and the
+  // canvas has to be exactly as it was left when the chat closes.
+  chatAnchorNodeId: string | null;
+  // What the composer replies to while the chat is open — the thread's leaf.
+  // Falls back to the selected card, which is what the canvas replies to.
+  replyTargetNodeId: string | null;
   // Deleted ids are kept so a stream still in flight cannot re-add its card.
   removedNodeIds: Record<string, true>;
 
@@ -47,6 +55,10 @@ type GraphState = {
   setExpandedNode(id: string | null): void;
   setFocusNode(id: string | null): void;
   setDeletingNodes(ids: string[]): void;
+  openChat(anchorNodeId?: string | null): void;
+  closeChat(): void;
+  setChatAnchor(nodeId: string): void;
+  setReplyTarget(nodeId: string | null): void;
   removeNodes(ids: string[]): void;
   updateNodeGeometry(
     id: string,
@@ -90,6 +102,9 @@ export const useGraphStore = create<GraphState>((set) => ({
   expandedNodeId: null,
   deletingNodeIds: [],
   focusNodeId: null,
+  chatOpen: false,
+  chatAnchorNodeId: null,
+  replyTargetNodeId: null,
   removedNodeIds: {},
 
   init({
@@ -121,6 +136,9 @@ export const useGraphStore = create<GraphState>((set) => ({
       expandedNodeId: null,
       deletingNodeIds: [],
       focusNodeId: null,
+      chatOpen: false,
+      chatAnchorNodeId: null,
+      replyTargetNodeId: null,
       removedNodeIds: {},
     });
   },
@@ -217,6 +235,34 @@ export const useGraphStore = create<GraphState>((set) => ({
     set({ deletingNodeIds: ids });
   },
 
+  // The chat is the expanded experience: a card left expanded would sit over
+  // it, and a hover frozen under the overlay would misdirect the card keys.
+  // The selection is left alone so closing lands back on the same card.
+  openChat(anchorNodeId = null) {
+    set((state) => ({
+      chatOpen: true,
+      chatAnchorNodeId: anchorNodeId ?? state.selectedNodeId,
+      expandedNodeId: null,
+      hoveredNodeId: null,
+    }));
+  },
+
+  closeChat() {
+    set({
+      chatOpen: false,
+      chatAnchorNodeId: null,
+      replyTargetNodeId: null,
+    });
+  },
+
+  setChatAnchor(nodeId) {
+    set({ chatAnchorNodeId: nodeId });
+  },
+
+  setReplyTarget(nodeId) {
+    set({ replyTargetNodeId: nodeId });
+  },
+
   removeNodes(ids) {
     set((state) => {
       const gone = new Set(ids);
@@ -238,6 +284,14 @@ export const useGraphStore = create<GraphState>((set) => ({
       const removedNodeIds = { ...state.removedNodeIds };
       for (const id of ids) removedNodeIds[id] = true;
 
+      // The chat's thread hangs off the anchor, and an anchor that just went
+      // with the deletion would send the view to whichever root sorts first.
+      // Climbing the lineage keeps it on the branch that was being read.
+      let chatAnchorNodeId = state.chatAnchorNodeId;
+      while (chatAnchorNodeId && gone.has(chatAnchorNodeId)) {
+        chatAnchorNodeId = state.nodes[chatAnchorNodeId]?.parent_id ?? null;
+      }
+
       return {
         nodes,
         edges,
@@ -246,6 +300,11 @@ export const useGraphStore = create<GraphState>((set) => ({
         attachments,
         removedNodeIds,
         deletingNodeIds: [],
+        chatAnchorNodeId,
+        replyTargetNodeId:
+          state.replyTargetNodeId && gone.has(state.replyTargetNodeId)
+            ? null
+            : state.replyTargetNodeId,
         selectedNodeId:
           state.selectedNodeId && gone.has(state.selectedNodeId)
             ? null

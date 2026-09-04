@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronUp } from "lucide-react";
@@ -13,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { modifierLabel } from "@/lib/shortcuts";
 import { CanvasSpinner } from "./CanvasSpinner";
 import { CardOutline } from "./CardOutline";
+import { ChatView } from "./ChatView";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import { DeleteNodeDialog } from "./DeleteNodeDialog";
 import { ShortcutsSheet } from "./ShortcutsSheet";
@@ -23,6 +32,8 @@ const Canvas = dynamic(() => import("./Canvas"), {
   ssr: false,
   loading: () => <CanvasSpinner />,
 });
+
+const noopSubscribe = () => () => {};
 
 // Lives in the layout, above the segment that changes, so the first prompt on a
 // draft can swap /c/new for /c/<id> without tearing the editor down. Everything
@@ -59,13 +70,60 @@ export function ConversationShell({
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [composerHidden, setComposerHidden] = useState(false);
+  // In the store rather than here: a card's own chat button opens this, and it
+  // is drawn inside tldraw where the shell's state is out of reach.
+  const chatOpen = useGraphStore((s) => s.chatOpen);
+  const closeChat = useGraphStore((s) => s.closeChat);
+  // The composer lives in this detached node for its whole life and the node is
+  // moved between the bottom bar and the chat view. Re-targeting a portal at a
+  // different container would remount the composer and drop the draft. Created
+  // only after hydration: the server has no portal, so the first client render
+  // must not have one either.
+  const hydrated = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
+  const composerNode = useMemo(
+    () => (hydrated ? document.createElement("div") : null),
+    [hydrated],
+  );
+  const [barHost, setBarHost] = useState<HTMLDivElement | null>(null);
+  const [chatHost, setChatHost] = useState<HTMLDivElement | null>(null);
+
+  // A conversation emptied under an open chat leaves nothing to draw.
+  useEffect(() => {
+    if (!hasNodes && chatOpen) closeChat();
+  }, [hasNodes, chatOpen, closeChat]);
 
   const toggleComposer = useCallback(() => {
     if (!hasNodes) return;
     setComposerHidden((hidden) => !hidden);
   }, [hasNodes]);
 
-  useKeyboardShortcuts({ shortcutsOpen, setShortcutsOpen, toggleComposer });
+  const toggleChat = useCallback(() => {
+    if (!hasNodes) return;
+    const graph = useGraphStore.getState();
+    if (graph.chatOpen) graph.closeChat();
+    else graph.openChat();
+  }, [hasNodes]);
+
+  useKeyboardShortcuts({
+    shortcutsOpen,
+    setShortcutsOpen,
+    toggleComposer,
+    chatOpen,
+    toggleChat,
+  });
+
+  useLayoutEffect(() => {
+    const host = chatOpen && chatHost ? chatHost : barHost;
+    if (!composerNode || !host || host === composerNode.parentElement) return;
+    host.appendChild(composerNode);
+    if (chatOpen) {
+      composerNode.querySelector("textarea")?.focus();
+    }
+  }, [composerNode, chatOpen, chatHost, barHost]);
 
   const [lastRegenerateId, setLastRegenerateId] = useState<string | null>(null);
   if (regenerateNodeId !== lastRegenerateId) {
@@ -133,23 +191,30 @@ export function ConversationShell({
                 </div>
               )}
               <div
+                ref={setBarHost}
                 className={cn(
                   hasNodes && "pointer-events-auto",
                   hasNodes && composerHidden && "hidden",
                 )}
-              >
-                <Composer
-                  credentials={credentials}
-                  skills={skills}
-                  webSearchDefault={webSearchDefault}
-                  centered={!hasNodes}
-                  onHide={hasNodes ? toggleComposer : undefined}
-                />
-              </div>
+              />
             </div>
           </div>
         </>
       )}
+      {hasNodes && chatOpen && (
+        <ChatView onClose={closeChat} composerHostRef={setChatHost} />
+      )}
+      {composerNode &&
+        createPortal(
+          <Composer
+            credentials={credentials}
+            skills={skills}
+            webSearchDefault={webSearchDefault}
+            centered={!hasNodes}
+            onHide={hasNodes && !chatOpen ? toggleComposer : undefined}
+          />,
+          composerNode,
+        )}
       <ExpandedCardOverlay />
       <DeleteNodeDialog />
       <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
