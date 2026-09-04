@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { firstRootId, neighboursOf, type Neighbours } from "@/lib/graph/neighbours";
+import { copyCard } from "@/lib/export/copy-card";
 
 const NAV_KEYS: Record<string, keyof Neighbours> = {
   ArrowUp: "parentId",
@@ -18,6 +19,12 @@ const KEEPS_ARROWS =
 
 function ownsArrowKeys(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && target.closest(KEEPS_ARROWS) !== null;
+}
+
+// The card under the pointer, falling back to the one already open or clicked.
+function cardInFocus(graph: ReturnType<typeof useGraphStore.getState>) {
+  const id = graph.expandedNodeId ?? graph.hoveredNodeId ?? graph.selectedNodeId;
+  return id ? graph.nodes[id] : undefined;
 }
 
 export function useKeyboardShortcuts({
@@ -39,8 +46,19 @@ export function useKeyboardShortcuts({
         event.stopPropagation();
       };
 
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
+      if (event.metaKey || event.ctrlKey) {
         const key = event.key.toLowerCase();
+
+        // Copy is the only shifted card shortcut; the sidebar owns the rest.
+        if (event.shiftKey) {
+          if (key !== "c") return;
+          const target = cardInFocus(graph);
+          if (!target) return;
+          claim();
+          copyCard(target.id);
+          return;
+        }
+
         if (key === "/") {
           claim();
           setShortcutsOpen(!shortcutsOpen);
@@ -53,9 +71,7 @@ export function useKeyboardShortcuts({
         }
         if (key !== "o" && key !== "r") return;
 
-        const targetId =
-          graph.expandedNodeId ?? graph.hoveredNodeId ?? graph.selectedNodeId;
-        const target = targetId ? graph.nodes[targetId] : undefined;
+        const target = cardInFocus(graph);
         // With no card to act on, leave the key to the browser rather than
         // swallowing a reload nothing replaces.
         if (!target) return;
