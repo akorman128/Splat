@@ -10,7 +10,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -94,10 +93,6 @@ export function AttachmentLibrary({
       <DialogContent className="flex max-h-[80dvh] flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Attach an earlier file</DialogTitle>
-          <DialogDescription>
-            Files you have already sent, newest first. Picking one copies it
-            into this canvas — nothing is uploaded again.
-          </DialogDescription>
         </DialogHeader>
 
         <Input
