@@ -110,6 +110,7 @@ export function Composer({
   >({});
   const [dragging, setDragging] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,9 +161,12 @@ export function Composer({
   const setWebSearch = useComposerStore((s) => s.setWebSearch);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
-  const parent = useGraphStore((s) =>
-    s.selectedNodeId ? s.nodes[s.selectedNodeId] : undefined,
-  );
+  // The chat replies at its thread's leaf; the canvas replies to the selected
+  // card. Both arrive here as the parent this prompt branches from.
+  const parent = useGraphStore((s) => {
+    const id = s.replyTargetNodeId ?? s.selectedNodeId;
+    return id ? s.nodes[id] : undefined;
+  });
   const regenerateTarget = useGraphStore((s) =>
     regenerateNodeId ? s.nodes[regenerateNodeId] : undefined,
   );
@@ -352,9 +356,8 @@ export function Composer({
 
     const graph = useGraphStore.getState();
     const allNodes = Object.values(graph.nodes);
-    const parentNode = graph.selectedNodeId
-      ? graph.nodes[graph.selectedNodeId]
-      : undefined;
+    const parentId = graph.replyTargetNodeId ?? graph.selectedNodeId;
+    const parentNode = parentId ? graph.nodes[parentId] : undefined;
 
     const contextNodeIds = parentNode
       ? Object.entries(checked)
@@ -538,6 +541,8 @@ export function Composer({
           </p>
           <ContextPicker
             parent={parent}
+            open={contextOpen}
+            onOpenChange={setContextOpen}
             checked={checked}
             onToggle={(id, value) =>
               setChecked((prev) => ({ ...prev, [id]: value }))

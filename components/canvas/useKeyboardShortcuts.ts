@@ -24,10 +24,14 @@ export function useKeyboardShortcuts({
   shortcutsOpen,
   setShortcutsOpen,
   toggleComposer,
+  chatOpen,
+  toggleChat,
 }: {
   shortcutsOpen: boolean;
   setShortcutsOpen(open: boolean): void;
   toggleComposer(): void;
+  chatOpen: boolean;
+  toggleChat(): void;
 }) {
   useEffect(() => {
     function handle(event: KeyboardEvent) {
@@ -46,12 +50,23 @@ export function useKeyboardShortcuts({
           setShortcutsOpen(!shortcutsOpen);
           return;
         }
+        if (key === "i") {
+          claim();
+          toggleChat();
+          return;
+        }
         if (key === "h") {
           claim();
-          toggleComposer();
+          if (!chatOpen) toggleComposer();
           return;
         }
         if (key !== "o" && key !== "r") return;
+        // The chat view already is the opened card, and it regenerates the
+        // message holding focus rather than whatever the canvas has selected.
+        if (chatOpen) {
+          if (key === "o") claim();
+          return;
+        }
 
         const targetId =
           graph.expandedNodeId ?? graph.hoveredNodeId ?? graph.selectedNodeId;
@@ -77,6 +92,7 @@ export function useKeyboardShortcuts({
         event.metaKey ||
         event.ctrlKey ||
         shortcutsOpen ||
+        chatOpen ||
         graph.deletingNodeIds.length > 0 ||
         ownsArrowKeys(event.target)
       ) {
@@ -96,5 +112,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handle, { capture: true });
     return () => window.removeEventListener("keydown", handle, { capture: true });
-  }, [shortcutsOpen, setShortcutsOpen, toggleComposer]);
+  }, [shortcutsOpen, setShortcutsOpen, toggleComposer, chatOpen, toggleChat]);
 }

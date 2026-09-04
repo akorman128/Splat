@@ -1,7 +1,7 @@
 export const MOD = "mod" as const;
 
 export const SHORTCUTS_HINT =
-  "Card shortcuts act on the card under the pointer, or the selected one.";
+  "Card shortcuts act on the card under the pointer, or the selected one. In the chat view the arrows move between messages while the prompt box is empty.";
 
 export type Shortcut = { keys: string[]; label: string };
 export type ShortcutGroup = { title: string; shortcuts: Shortcut[] };
@@ -30,6 +30,17 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["↓"], label: "Go to the first card branching off this one" },
       { keys: ["←"], label: "Go to the previous branch at this depth" },
       { keys: ["→"], label: "Go to the next branch at this depth" },
+    ],
+  },
+  {
+    title: "Chat view",
+    shortcuts: [
+      { keys: [MOD, "I"], label: "Open the canvas as a chat, and back" },
+      { keys: ["↑"], label: "Move to the message above" },
+      { keys: ["↓"], label: "Move to the message below" },
+      { keys: ["←"], label: "Previous branch of the current message" },
+      { keys: ["→"], label: "Next branch of the current message" },
+      { keys: ["Esc"], label: "Return to the canvas" },
     ],
   },
   {

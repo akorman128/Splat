@@ -3,11 +3,19 @@
 import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Maximize2, RefreshCw, Square, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  Maximize2,
+  MessageSquareText,
+  RefreshCw,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { useStopStream } from "@/lib/chat-client";
 import { estimateTokens } from "@/lib/tokens";
+import { modifierLabel } from "@/lib/shortcuts";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
@@ -36,6 +44,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
   const setHoveredNode = useGraphStore((s) => s.setHoveredNode);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
+  const openChat = useGraphStore((s) => s.openChat);
   const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const isRegenerateTarget = useComposerStore(
@@ -118,6 +127,17 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
               onClick={() => setDeletingNodes([nodeId])}
             >
               <Trash2 className="size-3.5" />
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              title={`Open this thread as a chat (${modifierLabel()}I)`}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onPointerDown={stop}
+              onClick={() => openChat(nodeId)}
+            >
+              <MessageSquareText className="size-3.5" />
             </button>
           )}
         </div>
