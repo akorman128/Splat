@@ -19,6 +19,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       { keys: [MOD, "O"], label: "Open the hovered card" },
       { keys: [MOD, "R"], label: "Regenerate the hovered card" },
+      { keys: [MOD, "Shift", "C"], label: "Copy the hovered card" },
       { keys: ["Delete"], label: "Delete the selected cards" },
       { keys: ["Esc"], label: "Close the open card" },
     ],

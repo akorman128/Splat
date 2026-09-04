@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { CardNode } from "@/lib/types";
 
 type StreamState = {
   streams: Record<string, string>;
@@ -29,3 +30,18 @@ export const useStreamStore = create<StreamState>((set) => ({
     });
   },
 }));
+
+// Two sources feed a running card: deltas from the stream this client opened,
+// and the row itself pushed over Realtime for clients that have none. Whichever
+// is further along is the one that has seen more of the answer.
+export function responseTextFor(
+  node: CardNode | undefined,
+  streamed: string | undefined,
+): string {
+  if (!node) return "";
+  return node.status === "streaming" &&
+    streamed !== undefined &&
+    streamed.length > node.response.length
+    ? streamed
+    : node.response;
+}

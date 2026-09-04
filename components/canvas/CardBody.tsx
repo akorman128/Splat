@@ -4,6 +4,7 @@ import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  Copy,
   Loader2,
   Maximize2,
   MessageSquareText,
@@ -14,6 +15,7 @@ import {
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { useStopStream } from "@/lib/chat-client";
+import { copyCard } from "@/lib/export/copy-card";
 import { estimateTokens } from "@/lib/tokens";
 import { modifierLabel } from "@/lib/shortcuts";
 import { thinkingSummary } from "@/lib/providers/thinking";
@@ -109,6 +111,15 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
               <RefreshCw className="size-3.5" />
             </button>
           )}
+          <button
+            type="button"
+            title="Copy card"
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            onPointerDown={stop}
+            onClick={() => copyCard(nodeId)}
+          >
+            <Copy className="size-3.5" />
+          </button>
           <button
             type="button"
             title="Expand"
