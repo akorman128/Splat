@@ -11,9 +11,8 @@ import {
   storagePath,
 } from "@/lib/attachments/types";
 
-// Signs an upload the browser performs itself. The bytes never pass through a
-// function, which is what the old multipart POST did — and what the host
-// rejected with a bare 413 once a file cleared its request body limit.
+// The bytes go from the browser to storage without passing through a function,
+// which is what capped an upload at the host's request body limit.
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) {
@@ -57,6 +56,8 @@ export async function POST(request: Request) {
     );
   }
 
+  // Classified before truncation: a cut name loses its extension, and falls
+  // back to the MIME the browser reported.
   const classification = classify(untruncated, reported);
   const filename = untruncated.slice(0, MAX_FILENAME_LENGTH);
   if (!classification.ok) {
@@ -79,12 +80,36 @@ export async function POST(request: Request) {
     );
   }
 
+  // The row is written before the URL is signed, so an upload that stops at
+  // any later step — the put, the record, a closed tab — is a draft the sweep
+  // and the DELETE handler already know how to take back. Finalise fills in
+  // what only the stored bytes can say.
   const id = randomUUID();
   const path = storagePath(user.id, conversationId, id, untruncated);
+  const { error: insertError } = await supabase.from("attachments").insert({
+    id,
+    user_id: user.id,
+    conversation_id: conversationId,
+    node_id: null,
+    storage_path: path,
+    filename,
+    mime_type: classification.mimeType,
+    byte_size: size,
+    kind: classification.kind,
+    extract_status: "pending",
+  });
+  if (insertError) {
+    return NextResponse.json(
+      { error: `Could not start the upload: ${insertError.message}` },
+      { status: 500 },
+    );
+  }
+
   const { data, error } = await supabase.storage
     .from(ATTACHMENTS_BUCKET)
     .createSignedUploadUrl(path);
   if (error || !data) {
+    await supabase.from("attachments").delete().eq("id", id);
     return NextResponse.json(
       { error: `Could not start the upload: ${error?.message ?? "unknown"}` },
       { status: 500 },

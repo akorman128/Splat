@@ -213,9 +213,7 @@ export function storageExtension(filename: string): string {
   return extension && extension.length <= 12 ? `.${extension}` : "";
 }
 
-// The bytes go up before the row exists, so the path has to be derivable twice
-// from the same inputs — once to sign the upload, once to find it again at
-// finalise. The uid prefix is what the storage policies match on.
+// The uid prefix is what the storage policies match on.
 export function storagePath(
   userId: string,
   conversationId: string,
