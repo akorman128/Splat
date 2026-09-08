@@ -28,12 +28,14 @@ type SignedUpload = { id: string; signedUrl: string; mimeType: string };
 // XMLHttpRequest, not fetch: a fetch body can only report upload progress
 // through `duplex: "half"` streaming, which is Chromium-over-HTTP/2 only.
 function putSigned(
-  xhr: XMLHttpRequest,
   signed: SignedUpload,
   file: File,
   onProgress: (fraction: number) => void,
+  signal: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const xhr = new XMLHttpRequest();
     xhr.open("PUT", signed.signedUrl);
     // What uploadToSignedUrl sends for a raw body. The token in the URL is what
     // authorises the write; the anon key only gets the request past the gateway.
@@ -48,26 +50,32 @@ function putSigned(
         resolve();
         return;
       }
-      let message = `Upload failed (${xhr.status})`;
-      try {
-        const body = JSON.parse(xhr.responseText) as { message?: string };
-        if (body.message) message = body.message;
-      } catch {
-        // Storage answers with JSON; anything else keeps the status.
-      }
-      reject(new Error(message));
+      reject(
+        new Error(
+          storageMessage(xhr.responseText) ?? `Upload failed (${xhr.status})`,
+        ),
+      );
     });
     xhr.addEventListener("error", () =>
       reject(new Error("Network error — the upload never reached storage.")),
     );
     xhr.addEventListener("abort", () => reject(new UploadAbortedError()));
+    signal.addEventListener("abort", () => xhr.abort(), { once: true });
     xhr.send(file);
   });
 }
 
-// Three steps, because the bytes go straight to storage: sign, put, record.
-// Routing them through the API instead capped an upload at the host's request
-// body limit, which is well under what the file kinds allow.
+function storageMessage(responseText: string): string | null {
+  try {
+    const body = JSON.parse(responseText) as { message?: unknown };
+    return typeof body.message === "string" ? body.message : null;
+  } catch {
+    return null;
+  }
+}
+
+// Sign, put, record: the bytes go straight to storage, so the API's request
+// body limit never sees them.
 export function uploadAttachment({
   file,
   conversationId,
@@ -77,52 +85,39 @@ export function uploadAttachment({
   conversationId: string;
   onProgress: (fraction: number) => void;
 }): Upload {
-  const xhr = new XMLHttpRequest();
-  let aborted = false;
+  const controller = new AbortController();
+  const { signal } = controller;
 
   const promise = (async () => {
-    const signed = await apiFetch<SignedUpload>(
-      "/api/attachments/upload-url",
-      postJson({
-        conversationId,
-        filename: file.name,
-        mimeType: file.type,
-        size: file.size,
-      }),
-    );
-    // An abort before open() has nothing to cancel; the sweep reclaims an
-    // object left behind by one that lands between the put and the record.
-    if (aborted) throw new UploadAbortedError();
-
-    await putSigned(xhr, signed, file, onProgress);
-    if (aborted) throw new UploadAbortedError();
-
-    const { attachment } = await apiFetch<{ attachment: CardAttachment }>(
-      "/api/attachments",
-      postJson({
-        conversationId,
-        id: signed.id,
-        filename: file.name,
-        mimeType: file.type,
-      }),
-    );
-    // A cancel landing here found no attachment id on the draft to delete, and
-    // the record cannot be called off once the request is away — so it is undone
-    // rather than aborted.
-    if (aborted) {
-      await deleteAttachment(attachment.id).catch(() => {});
+    let signed: SignedUpload | null = null;
+    try {
+      signed = await apiFetch<SignedUpload>("/api/attachments/upload-url", {
+        ...postJson({
+          conversationId,
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+        }),
+        signal,
+      });
+      await putSigned(signed, file, onProgress, signal);
+      const { attachment } = await apiFetch<{ attachment: CardAttachment }>(
+        "/api/attachments",
+        { ...postJson({ id: signed.id }), signal },
+      );
+      return attachment;
+    } catch (err) {
+      if (!signal.aborted) throw err;
+      // The row exists from the moment the URL is signed, so whichever step
+      // the abort landed in, one delete takes back everything this upload left
+      // behind. A cancel during the signing itself leaves at most a row the
+      // sweep reclaims.
+      if (signed) void deleteAttachment(signed.id).catch(() => {});
       throw new UploadAbortedError();
     }
-    return attachment;
   })();
 
-  return {
-    promise,
-    abort: () => {
-      aborted = true;
-      xhr.abort();
-    },
-  };
+  return { promise, abort: () => controller.abort() };
 }
 
 export async function createConversation(): Promise<string> {

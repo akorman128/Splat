@@ -82,7 +82,8 @@ export async function POST(request: Request) {
   const { data: sources, error: readError } = await supabase
     .from("attachments")
     .select(SOURCE_COLUMNS)
-    .in("id", [...new Set(ids)]);
+    .in("id", [...new Set(ids)])
+    .neq("extract_status", "pending");
   if (readError) {
     return NextResponse.json({ error: readError.message }, { status: 500 });
   }

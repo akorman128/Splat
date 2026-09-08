@@ -545,7 +545,8 @@ export async function POST(request: Request) {
       const { data: rows } = await supabase
         .from("attachments")
         .select(TURN_ATTACHMENT_COLUMNS)
-        .in("id", attachmentIds);
+        .in("id", attachmentIds)
+        .neq("extract_status", "pending");
       const byId = new Map(
         ((rows ?? []) as unknown as TurnAttachment[]).map((row) => [
           row.id,

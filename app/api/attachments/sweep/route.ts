@@ -96,7 +96,7 @@ export async function POST(request: Request) {
         .list(prefix, { limit: 1000 });
       return (objects ?? [])
         .filter((object) => {
-          // An upload in flight has no row yet.
+          // A copy made by /reuse lands before its row does.
           const createdAt = object.created_at
             ? Date.parse(object.created_at)
             : now;

@@ -5,14 +5,12 @@ import { extractAttachment } from "@/lib/attachments/extract";
 import {
   ATTACHMENTS_BUCKET,
   CARD_ATTACHMENT_COLUMNS,
-  MAX_FILENAME_LENGTH,
   MAX_INLINE_BYTES,
   SIZE_CAPS,
-  classify,
   formatBytes,
   sentAsPages,
   sizeCapMessage,
-  storagePath,
+  type AttachmentKind,
 } from "@/lib/attachments/types";
 
 export const maxDuration = 60;
@@ -20,10 +18,10 @@ export const maxDuration = 60;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-// Records a file the browser has already put in the bucket against a URL
-// /upload-url signed. The bytes are read back out rather than taken from the
-// request: what gets measured and extracted is then what was actually stored,
-// and the id is the only part of the path a caller supplies.
+// Records a file the browser has already put in the bucket against the row
+// /upload-url wrote when it signed the URL. The bytes are read back out rather
+// than taken from the request, so what gets measured and extracted is what was
+// actually stored.
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) {
@@ -31,60 +29,48 @@ export async function POST(request: Request) {
   }
   const supabase = await createClient();
 
-  let body: {
-    conversationId?: unknown;
-    id?: unknown;
-    filename?: unknown;
-    mimeType?: unknown;
-  };
+  let body: { id?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-
-  const conversationId =
-    typeof body.conversationId === "string" ? body.conversationId : null;
   const id =
     typeof body.id === "string" && UUID.test(body.id) ? body.id : null;
-  const untruncated =
-    typeof body.filename === "string"
-      ? body.filename.split(/[\\/]/).pop() || ""
-      : "";
-  const reported = typeof body.mimeType === "string" ? body.mimeType : "";
-  if (!conversationId || !id || !untruncated) {
+  if (!id) {
     return NextResponse.json({ error: "Invalid upload" }, { status: 400 });
   }
 
-  // The bytes are already in the bucket by the time this runs — the browser put
-  // them there — so every failure from here has to take them back out.
-  const path = storagePath(user.id, conversationId, id, untruncated);
+  const { data: draft } = await supabase
+    .from("attachments")
+    .select(`${CARD_ATTACHMENT_COLUMNS}, storage_path`)
+    .eq("id", id)
+    .maybeSingle();
+  if (!draft) {
+    return NextResponse.json(
+      { error: "That upload was never started — attach the file again." },
+      { status: 404 },
+    );
+  }
+  // A retried record finds the work already done, and answers with it.
+  const { storage_path: path, ...recorded } = draft;
+  if (draft.extract_status !== "pending") {
+    return NextResponse.json({ attachment: recorded });
+  }
+  const kind = draft.kind as AttachmentKind;
+
+  // Object first: the row is the only place the path is written down.
   const discard = async (error: string, status: number) => {
     await supabase.storage.from(ATTACHMENTS_BUCKET).remove([path]);
+    await supabase.from("attachments").delete().eq("id", id);
     return NextResponse.json({ error }, { status });
   };
-
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("id", conversationId)
-    .maybeSingle();
-  if (!conversation) {
-    return await discard("Conversation not found", 404);
-  }
-
-  // Classified before truncation: a cut name loses its extension, and falls
-  // back to the MIME the browser reported.
-  const classification = classify(untruncated, reported);
-  const filename = untruncated.slice(0, MAX_FILENAME_LENGTH);
-  if (!classification.ok) {
-    return await discard(classification.message, 415);
-  }
-  const { kind, mimeType } = classification;
 
   const { data: stored, error: downloadError } = await supabase.storage
     .from(ATTACHMENTS_BUCKET)
     .download(path);
+  // Left as it is: a put still landing can be recorded on a retry, and one
+  // that never lands is a draft the sweep reclaims.
   if (downloadError || !stored) {
     return NextResponse.json(
       { error: "That upload did not finish — attach the file again." },
@@ -92,16 +78,15 @@ export async function POST(request: Request) {
     );
   }
 
-  // Measured off the blob before it is copied into a buffer: the signed URL
-  // authorises anything up to the bucket's own limit, which is well over the
-  // caps for most kinds.
+  // The signed URL authorises anything up to the bucket's own limit, which is
+  // well over the caps for most kinds.
   if (stored.size === 0) {
     return await discard("That file is empty.", 400);
   }
   const cap = SIZE_CAPS[kind];
   if (stored.size > cap) {
     return await discard(
-      `${filename} is ${sizeCapMessage(stored.size, cap)}`,
+      `${draft.filename} is ${sizeCapMessage(stored.size, cap)}`,
       413,
     );
   }
@@ -119,23 +104,15 @@ export async function POST(request: Request) {
       bytes.byteLength > MAX_INLINE_BYTES
     ) {
       return await discard(
-        `${filename} is a ${formatBytes(bytes.byteLength)} PDF with no text to extract, so it has to be sent as pages — and the limit for that is ${formatBytes(MAX_INLINE_BYTES)}.`,
+        `${draft.filename} is a ${formatBytes(bytes.byteLength)} PDF with no text to extract, so it has to be sent as pages — and the limit for that is ${formatBytes(MAX_INLINE_BYTES)}.`,
         413,
       );
     }
 
-    const { data: row, error: insertError } = await supabase
+    const { data: row, error: updateError } = await supabase
       .from("attachments")
-      .insert({
-        id,
-        user_id: user.id,
-        conversation_id: conversationId,
-        node_id: null,
-        storage_path: path,
-        filename,
-        mime_type: mimeType,
+      .update({
         byte_size: bytes.byteLength,
-        kind,
         image_width: extracted.width,
         image_height: extracted.height,
         extract_status: extracted.status,
@@ -144,36 +121,17 @@ export async function POST(request: Request) {
         truncated: extracted.truncated,
         est_tokens: extracted.estTokens,
       })
+      .eq("id", id)
       .select(CARD_ATTACHMENT_COLUMNS)
-      .single();
-    // A retried record finds its own row already there. The object belongs to
-    // whichever call inserted first, so this one answers with that row rather
-    // than reporting a failure for a file that is in fact attached — and, more
-    // to the point, without reaching the cleanup below.
-    if (insertError?.code === "23505") {
-      const { data: existing } = await supabase
-        .from("attachments")
-        .select(CARD_ATTACHMENT_COLUMNS)
-        .eq("id", id)
-        .maybeSingle();
-      if (existing) return NextResponse.json({ attachment: existing });
-      return NextResponse.json(
-        { error: "That file is already attached." },
-        { status: 409 },
-      );
-    }
-    if (insertError || !row) {
-      throw new Error(insertError?.message ?? "Could not record the file");
+      .maybeSingle();
+    if (updateError || !row) {
+      throw new Error(updateError?.message ?? "Could not record the file");
     }
     return NextResponse.json({ attachment: row });
   } catch (err) {
-    await supabase.storage.from(ATTACHMENTS_BUCKET).remove([path]);
-    return NextResponse.json(
-      {
-        error:
-          err instanceof Error ? err.message : "Could not process the file",
-      },
-      { status: 500 },
+    return await discard(
+      err instanceof Error ? err.message : "Could not process the file",
+      500,
     );
   }
 }
