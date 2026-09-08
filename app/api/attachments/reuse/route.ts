@@ -6,7 +6,7 @@ import {
   ATTACHMENTS_BUCKET,
   CARD_ATTACHMENT_COLUMNS,
   MAX_ATTACHMENTS_PER_TURN,
-  storageExtension,
+  storagePath,
 } from "@/lib/attachments/types";
 import type { CardAttachment } from "@/lib/types";
 
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     return {
       id: newId,
       source,
-      path: `${user.id}/${conversationId}/${newId}${storageExtension(source.filename)}`,
+      path: storagePath(user.id, conversationId, newId, source.filename),
     };
   });
 
