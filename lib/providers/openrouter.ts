@@ -223,11 +223,6 @@ function assertWholeResponse(finishReason: string | null): void {
   if (finishReason === null) return;
   const reason = finishReason.toLowerCase();
   if (COMPLETE_FINISH_REASONS.has(reason)) return;
-  if (TRUNCATING_FINISH_REASONS.has(reason)) {
-    throw new Error(
-      "OpenRouter response incomplete: hit the output token limit.",
-    );
-  }
   if (REFUSAL_FINISH_REASONS.has(reason)) {
     throw new Error("The model declined this request (content filter).");
   }
@@ -235,6 +230,43 @@ function assertWholeResponse(finishReason: string | null): void {
     throw new Error("OpenRouter reported a failed response.");
   }
   throw new Error(`OpenRouter response incomplete: ${finishReason}.`);
+}
+
+function truncationError(cause?: unknown): Error {
+  return new Error(
+    "OpenRouter response incomplete: hit the output token limit.",
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function isTruncated(finishReason: string | null): boolean {
+  return (
+    finishReason !== null &&
+    TRUNCATING_FINISH_REASONS.has(finishReason.toLowerCase())
+  );
+}
+
+const MAX_CONTINUATIONS = 3;
+
+// A fresh turn rather than assistant prefill: prefill would join the halves
+// without a seam, but current Claude models reject it with a 400, the OpenAI
+// API has no such thing, and openrouter/auto never says which model it picked.
+const CONTINUE_PROMPT =
+  "Your previous message was cut off by the output length limit. Continue it from exactly where it stopped: no preamble, no recap, and do not repeat or restart the sentence, list item, or code block you were in the middle of. Output only the text that follows.";
+
+function continued(messages: ChatMessage[], text: string): ChatMessage[] {
+  return [
+    ...messages,
+    { role: "assistant", content: text },
+    { role: "user", content: CONTINUE_PROMPT },
+  ];
+}
+
+function addTokens(
+  total: number | null,
+  reported: number | undefined,
+): number | null {
+  return reported == null ? total : (total ?? 0) + reported;
 }
 
 type ChunkError = { message?: string; code?: string | number } | null;
@@ -312,55 +344,78 @@ export const openrouterAdapter: ProviderAdapter = {
     webSearch,
     signal,
   }): AsyncGenerator<StreamEvent> {
-    const body: OpenRouterStreamBody = {
-      model,
-      messages: toChatCompletions(messages, system),
-      stream: true,
-      stream_options: { include_usage: true },
-      max_tokens:
-        (await outputBudget(apiKey, model, messages, system, webSearch)) ??
-        undefined,
-      ...reasoningParams(thinking ?? null),
-      ...webSearchParams(webSearch),
-    };
-    // The cast is the server tool: OpenRouter accepts its own tool types where
-    // the SDK's union only admits a function or a custom tool.
-    const stream = await client(apiKey).chat.completions.create(
-      body as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
-      signal ? { signal } : undefined,
-    );
-
-    let usage: { promptTokens: number | null; completionTokens: number | null } = {
-      promptTokens: null,
-      completionTokens: null,
-    };
-    let finishReason: string | null = null;
+    let promptTokens: number | null = null;
+    let completionTokens: number | null = null;
     const citations: StreamEvent[] = [];
+    let text = "";
+    let turn = messages;
 
-    for await (const chunk of stream) {
-      const errorMessage = streamErrorMessage(chunk as MaybeErrorChunk);
-      if (errorMessage) throw new Error(errorMessage);
-
-      const choice = chunk.choices?.[0];
-      if (choice?.delta?.content) {
-        yield { type: "delta", text: choice.delta.content };
-      }
-      citations.push(...chunkCitations(chunk as MaybeAnnotatedChunk));
-      if (choice?.finish_reason) {
-        finishReason = choice.finish_reason;
-      }
-      if (chunk.usage) {
-        usage = {
-          promptTokens: chunk.usage.prompt_tokens ?? null,
-          completionTokens: chunk.usage.completion_tokens ?? null,
+    for (let round = 0; ; round++) {
+      const before = text.length;
+      let finishReason: string | null = null;
+      try {
+        const body: OpenRouterStreamBody = {
+          model,
+          messages: toChatCompletions(turn, system),
+          stream: true,
+          stream_options: { include_usage: true },
+          max_tokens:
+            (await outputBudget(apiKey, model, turn, system, webSearch)) ??
+            undefined,
+          ...reasoningParams(thinking ?? null),
+          ...webSearchParams(webSearch),
         };
+        // The cast is the server tool: OpenRouter accepts its own tool types
+        // where the SDK's union only admits a function or a custom tool.
+        const stream = await client(apiKey).chat.completions.create(
+          body as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
+          signal ? { signal } : undefined,
+        );
+
+        let usage: OpenAI.CompletionUsage | undefined;
+        for await (const chunk of stream) {
+          const errorMessage = streamErrorMessage(chunk as MaybeErrorChunk);
+          if (errorMessage) throw new Error(errorMessage);
+
+          const choice = chunk.choices?.[0];
+          if (choice?.delta?.content) {
+            text += choice.delta.content;
+            yield { type: "delta", text: choice.delta.content };
+          }
+          citations.push(...chunkCitations(chunk as MaybeAnnotatedChunk));
+          if (choice?.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
+          if (chunk.usage) usage = chunk.usage;
+        }
+        // Each round re-sends the prompt, so both counts are what was billed
+        // in total.
+        promptTokens = addTokens(promptTokens, usage?.prompt_tokens);
+        completionTokens = addTokens(completionTokens, usage?.completion_tokens);
+        if (!isTruncated(finishReason)) assertWholeResponse(finishReason);
+      } catch (err) {
+        // A continuation that fails — no room left in the context, a rejected
+        // request, an error mid-stream, a refusal — leaves the answer as cut
+        // off as it was, and that is what the card reports; the reason is kept
+        // for the log.
+        if (round === 0 || signal?.aborted) throw err;
+        console.warn(
+          `[providers/openrouter] continuation ${round} of ${model} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        throw truncationError(err);
       }
+
+      // A continuation that adds nothing is not an answer whatever it ended
+      // with: the budget went on reasoning, and asking again would spend it
+      // the same way.
+      const grew = text.length > before;
+      if (!isTruncated(finishReason) && (round === 0 || grew)) break;
+      if (round === MAX_CONTINUATIONS || !grew) throw truncationError();
+      turn = continued(messages, text);
     }
 
-    assertWholeResponse(finishReason);
-
     yield* citations;
-    yield { type: "usage", ...usage };
+    yield { type: "usage", promptTokens, completionTokens };
   },
 
   async generateFollowups({ apiKey, prompt, response, model }) {
