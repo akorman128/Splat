@@ -51,6 +51,8 @@ export const PDF_MIN_CHARS_PER_PAGE = 50;
 
 export const MAX_ATTACHMENTS_PER_TURN = 20;
 
+export const MAX_FILENAME_LENGTH = 200;
+
 // CardAttachmentList derives its query staleTime from this.
 export const SIGNED_URL_TTL_SECONDS = 3600;
 
@@ -209,6 +211,18 @@ export function classify(filename: string, reported: string): Classification {
 export function storageExtension(filename: string): string {
   const extension = extensionOf(filename).replace(/[^a-z0-9]/g, "");
   return extension && extension.length <= 12 ? `.${extension}` : "";
+}
+
+// The bytes go up before the row exists, so the path has to be derivable twice
+// from the same inputs — once to sign the upload, once to find it again at
+// finalise. The uid prefix is what the storage policies match on.
+export function storagePath(
+  userId: string,
+  conversationId: string,
+  id: string,
+  filename: string,
+): string {
+  return `${userId}/${conversationId}/${id}${storageExtension(filename)}`;
 }
 
 export function formatBytes(bytes: number): string {
