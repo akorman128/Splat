@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   ArrowDown,
   ArrowLeft,
@@ -31,6 +29,7 @@ import { copyCard } from "@/lib/export/copy-card";
 import { neighboursOf } from "@/lib/graph/neighbours";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
+import { HighlightedResponse } from "@/components/highlights/HighlightedResponse";
 import { CardAttachmentList } from "./CardAttachmentList";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
@@ -200,11 +199,12 @@ export function ExpandedCardOverlay() {
             className="min-h-0 flex-1 overflow-y-auto px-6 py-4"
           >
             {responseText && (
-              <div className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {responseText}
-                </ReactMarkdown>
-              </div>
+              <HighlightedResponse
+                nodeId={node.id}
+                text={responseText}
+                interactive={!readOnly && !isStreaming}
+                className="prose prose-sm max-w-none dark:prose-invert"
+              />
             )}
             {isError && (
               <InterruptedNotice

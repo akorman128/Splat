@@ -1,8 +1,6 @@
 "use client";
 
 import { memo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   ChevronLeft,
   ChevronRight,
@@ -18,6 +16,7 @@ import { useComposerStore } from "@/lib/store/composer-store";
 import { useStopStream } from "@/lib/chat-client";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
+import { HighlightedResponse } from "@/components/highlights/HighlightedResponse";
 import { CardAttachmentList } from "./CardAttachmentList";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
@@ -82,11 +81,12 @@ export const ChatMessage = memo(function ChatMessage({
 
       <div className="space-y-2">
         {responseText ? (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {responseText}
-            </ReactMarkdown>
-          </div>
+          <HighlightedResponse
+            nodeId={nodeId}
+            text={responseText}
+            interactive={!readOnly && !isStreaming}
+            className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto"
+          />
         ) : isStreaming ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />

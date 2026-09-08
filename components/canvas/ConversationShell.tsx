@@ -15,6 +15,7 @@ import { ChevronUp } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { useAttachmentStore } from "@/lib/store/attachment-store";
+import { useSettingsStore } from "@/lib/store/settings-store";
 import { Composer } from "@/components/composer/Composer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
 import { DeleteNodeDialog } from "./DeleteNodeDialog";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+import type { HighlightColor } from "@/lib/highlights/palette";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
 
 const Canvas = dynamic(() => import("./Canvas"), {
@@ -43,15 +45,24 @@ export function ConversationShell({
   credentials,
   skills,
   webSearchDefault,
+  highlightColor,
   children,
 }: {
   credentials: CredentialSummary[];
   skills: SkillSummary[];
   webSearchDefault: boolean;
+  highlightColor: HighlightColor;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const params = useParams<{ conversationId?: string }>();
+  // Seeded rather than passed down: the selection toolbar that reads it is
+  // drawn inside a tldraw shape, where props from here cannot reach.
+  const setHighlightColor = useSettingsStore((s) => s.setHighlightColor);
+  useEffect(() => {
+    setHighlightColor(highlightColor);
+  }, [highlightColor, setHighlightColor]);
+
   const routeConversationId = params.conversationId ?? null;
   const draftRoute = routeConversationId === null;
 

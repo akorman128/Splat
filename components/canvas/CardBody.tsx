@@ -1,8 +1,6 @@
 "use client";
 
 import { memo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   Copy,
   Loader2,
@@ -21,6 +19,7 @@ import { modifierLabel } from "@/lib/shortcuts";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
 import { AttachmentIcon } from "@/components/attachments/AttachmentIcon";
+import { HighlightedResponse } from "@/components/highlights/HighlightedResponse";
 import { SuggestionRail } from "./SuggestionRail";
 import { InterruptedNotice } from "./InterruptedNotice";
 import { contextLabel, useCardState } from "./useCardState";
@@ -197,11 +196,11 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           }}
         >
           {responseText ? (
-            <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto prose-pre:text-xs">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {responseText}
-              </ReactMarkdown>
-            </div>
+            <HighlightedResponse
+              nodeId={nodeId}
+              text={responseText}
+              className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto prose-pre:text-xs"
+            />
           ) : isStreaming ? (
             <p className="text-xs text-muted-foreground">Waiting for the first token…</p>
           ) : null}

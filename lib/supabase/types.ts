@@ -155,6 +155,62 @@ export type Database = {
         }
         Relationships: []
       }
+      highlights: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          node_id: string
+          note: string | null
+          note_created_at: string | null
+          note_edited_at: string | null
+          note_model: string | null
+          prefix: string
+          quote: string
+          suffix: string
+          text_offset: number
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          node_id: string
+          note?: string | null
+          note_created_at?: string | null
+          note_edited_at?: string | null
+          note_model?: string | null
+          prefix?: string
+          quote: string
+          suffix?: string
+          text_offset: number
+          user_id?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          node_id?: string
+          note?: string | null
+          note_created_at?: string | null
+          note_edited_at?: string | null
+          note_model?: string | null
+          prefix?: string
+          quote?: string
+          suffix?: string
+          text_offset?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "highlights_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       node_attachments: {
         Row: {
           attachment_id: string | null
@@ -342,18 +398,21 @@ export type Database = {
         Row: {
           created_at: string
           display_name: string | null
+          highlight_color: string
           id: string
           web_search: boolean
         }
         Insert: {
           created_at?: string
           display_name?: string | null
+          highlight_color?: string
           id: string
           web_search?: boolean
         }
         Update: {
           created_at?: string
           display_name?: string | null
+          highlight_color?: string
           id?: string
           web_search?: boolean
         }

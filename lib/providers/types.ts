@@ -70,4 +70,15 @@ export interface ProviderAdapter {
     response: string;
     model?: string;
   }): Promise<StructuredFollowups>;
+
+  // A reader's question about one highlighted passage. Answered on the same
+  // utility model the follow-ups use — the fastest one the provider has — and
+  // in one shot rather than a stream, because the answer is a paragraph read
+  // in a popover, not a card.
+  answerHighlight(opts: {
+    apiKey: string;
+    system: string;
+    prompt: string;
+    model?: string;
+  }): Promise<{ answer: string; model: string }>;
 }

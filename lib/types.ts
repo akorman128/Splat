@@ -12,6 +12,7 @@ export type NodeSkillRow = Database["public"]["Tables"]["node_skills"]["Row"];
 export type AttachmentRow = Database["public"]["Tables"]["attachments"]["Row"];
 export type NodeAttachmentRow =
   Database["public"]["Tables"]["node_attachments"]["Row"];
+export type HighlightRow = Database["public"]["Tables"]["highlights"]["Row"];
 
 // Matches the column default.
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
@@ -34,6 +35,11 @@ export type CardAttachment = Omit<
 export type LibraryAttachment = CardAttachment & {
   conversation_title: string | null;
 };
+
+// user_id is redundant on the client — RLS already means every row that arrives
+// is the reader's own — and leaving it off keeps highlights shaped like the
+// other card-scoped rows.
+export type CardHighlight = Omit<HighlightRow, "user_id">;
 
 
 export type SharedConversation = {

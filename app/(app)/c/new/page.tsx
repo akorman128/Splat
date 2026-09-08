@@ -8,6 +8,7 @@ export default function NewConversationPage() {
       edges={[]}
       suggestions={[]}
       attachments={[]}
+      highlights={[]}
     />
   );
 }

@@ -129,3 +129,34 @@
     @apply font-sans;
   }
 }
+/* Highlights are painted with the CSS Custom Highlight API rather than by
+   wrapping text in <mark>: the response is react-markdown's DOM, and a quote
+   that runs across a bold word or a list item spans elements React owns. A
+   ::highlight() name can only be styled by a static rule, so there is one per
+   colour in lib/highlights/palette.ts, and the registry in paint.ts fills them.
+   A browser without the API paints nothing; the badges still work.
+
+   One set of ink for both themes, always under dark text. A highlighter does
+   not change colour with the page, and the alternative — a dark fill under
+   light text in dark mode — cannot be made brighter without dropping that
+   text below its contrast floor. Every pairing below clears 6:1. */
+::highlight(splat-hl-yellow) {
+  background-color: #fde047;
+  color: #1c1917;
+}
+::highlight(splat-hl-green) {
+  background-color: #4ade80;
+  color: #1c1917;
+}
+::highlight(splat-hl-blue) {
+  background-color: #38bdf8;
+  color: #1c1917;
+}
+::highlight(splat-hl-pink) {
+  background-color: #f472b6;
+  color: #1c1917;
+}
+::highlight(splat-hl-purple) {
+  background-color: #c084fc;
+  color: #1c1917;
+}

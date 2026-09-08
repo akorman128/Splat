@@ -4,6 +4,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS, OPENROUTER_AUTO } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { ANNOTATION_MAX_TOKENS, cleanAnswer } from "./annotate";
 import {
   MAX_WEB_SEARCHES,
   OPENROUTER_WEB_SEARCH,
@@ -434,6 +435,36 @@ export const openrouterAdapter: ProviderAdapter = {
         ),
       });
       return toStructured(res.choices[0]?.message.parsed ?? null);
+    };
+
+    try {
+      return await call(MODELS.openrouter.utility);
+    } catch (err) {
+      const fallback = followupsFallback(model);
+      if (fallback && isModelUnavailable(err)) {
+        console.warn(
+          `[providers/openrouter] utility model ${MODELS.openrouter.utility} unavailable; falling back to ${fallback}`,
+        );
+        return await call(fallback);
+      }
+      throw err;
+    }
+  },
+
+  async answerHighlight({ apiKey, system, prompt, model }) {
+    const call = async (target: string) => {
+      const res = await client(apiKey).chat.completions.create({
+        model: target,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: ANNOTATION_MAX_TOKENS,
+      });
+      return {
+        answer: cleanAnswer(res.choices[0]?.message.content ?? ""),
+        model: res.model || target,
+      };
     };
 
     try {
