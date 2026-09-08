@@ -176,7 +176,7 @@ export function ConversationShell({
             )}
           >
             <div className={cn("w-full", hasNodes ? "max-w-2xl" : "max-w-xl")}>
-              {hasNodes && composerHidden && (
+              {hasNodes && composerHidden && !chatOpen && (
                 <div className="flex justify-end">
                   <Button
                     variant="outline"
@@ -202,7 +202,12 @@ export function ConversationShell({
         </>
       )}
       {hasNodes && chatOpen && (
-        <ChatView onClose={closeChat} composerHostRef={setChatHost} />
+        <ChatView
+          onClose={closeChat}
+          composerHostRef={setChatHost}
+          composerHidden={composerHidden}
+          onShowComposer={toggleComposer}
+        />
       )}
       {composerNode &&
         createPortal(
@@ -211,7 +216,7 @@ export function ConversationShell({
             skills={skills}
             webSearchDefault={webSearchDefault}
             centered={!hasNodes}
-            onHide={hasNodes && !chatOpen ? toggleComposer : undefined}
+            onHide={hasNodes ? toggleComposer : undefined}
           />,
           composerNode,
         )}
