@@ -75,7 +75,7 @@ export function useKeyboardShortcuts({
         }
         if (key === "h") {
           claim();
-          if (!chatOpen) toggleComposer();
+          toggleComposer();
           return;
         }
         if (key !== "o" && key !== "r") return;

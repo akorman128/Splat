@@ -80,55 +80,6 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           <span className="flex-1 truncate text-lg font-semibold">
             {node.title ?? (isStreaming ? "Thinking…" : "Untitled")}
           </span>
-          {isStreaming && !readOnly && (
-            <button
-              type="button"
-              title="Stop generating"
-              disabled={stopStream.isPending}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-              onPointerDown={stop}
-              onClick={() => stopStream.mutate(nodeId)}
-            >
-              <Square className="size-3.5" />
-            </button>
-          )}
-          {!isStreaming && !readOnly && (
-            <button
-              type="button"
-              title={
-                isRegenerateTarget ? "Cancel regeneration" : "Regenerate answer"
-              }
-              className={`rounded p-1 ${
-                isRegenerateTarget
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
-              onPointerDown={stop}
-              onClick={() =>
-                setRegenerateNode(isRegenerateTarget ? null : nodeId)
-              }
-            >
-              <RefreshCw className="size-3.5" />
-            </button>
-          )}
-          <button
-            type="button"
-            title="Copy card"
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            onPointerDown={stop}
-            onClick={() => copyCard(nodeId)}
-          >
-            <Copy className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            title="Expand"
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            onPointerDown={stop}
-            onClick={() => setExpandedNode(nodeId)}
-          >
-            <Maximize2 className="size-3.5" />
-          </button>
           {!readOnly && (
             <button
               type="button"
@@ -140,23 +91,76 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
               <Trash2 className="size-3.5" />
             </button>
           )}
-          {!readOnly && (
-            <button
-              type="button"
-              title={`Open this thread as a chat (${modifierLabel()}I)`}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-              onPointerDown={stop}
-              onClick={() => openChat(nodeId)}
-            >
-              <MessageSquareText className="size-3.5" />
-            </button>
-          )}
         </div>
 
-        <div className="border-b bg-muted/40 px-3 py-2">
-          <p className="line-clamp-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
+          <p className="line-clamp-2 flex-1 text-xs text-muted-foreground">
             {node.prompt}
           </p>
+          <div className="flex shrink-0 items-center gap-1">
+            {isStreaming && !readOnly && (
+              <button
+                type="button"
+                title="Stop generating"
+                disabled={stopStream.isPending}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                onPointerDown={stop}
+                onClick={() => stopStream.mutate(nodeId)}
+              >
+                <Square className="size-3.5" />
+              </button>
+            )}
+            {!isStreaming && !readOnly && (
+              <button
+                type="button"
+                title={
+                  isRegenerateTarget
+                    ? "Cancel regeneration"
+                    : "Regenerate answer"
+                }
+                className={`rounded p-1 ${
+                  isRegenerateTarget
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+                onPointerDown={stop}
+                onClick={() =>
+                  setRegenerateNode(isRegenerateTarget ? null : nodeId)
+                }
+              >
+                <RefreshCw className="size-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              title="Copy card"
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onPointerDown={stop}
+              onClick={() => copyCard(nodeId)}
+            >
+              <Copy className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              title="Expand"
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onPointerDown={stop}
+              onClick={() => setExpandedNode(nodeId)}
+            >
+              <Maximize2 className="size-3.5" />
+            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                title={`Open this thread as a chat (${modifierLabel()}I)`}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                onPointerDown={stop}
+                onClick={() => openChat(nodeId)}
+              >
+                <MessageSquareText className="size-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {attachments.length > 0 && (

@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { MessageSquareText, X } from "lucide-react";
+import { ChevronUp, MessageSquareText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { useSubmitSuggestion } from "@/lib/chat-actions";
@@ -55,9 +56,13 @@ function fieldOwnsArrows(target: EventTarget | null): boolean {
 export function ChatView({
   onClose,
   composerHostRef,
+  composerHidden,
+  onShowComposer,
 }: {
   onClose(): void;
   composerHostRef(el: HTMLDivElement | null): void;
+  composerHidden: boolean;
+  onShowComposer(): void;
 }) {
   const nodes = useGraphStore((s) => s.nodes);
   const anchorNodeId = useGraphStore((s) => s.chatAnchorNodeId);
@@ -224,6 +229,7 @@ export function ChatView({
   );
 
   const closeLabel = `Back to the canvas (${modifierLabel()}I)`;
+  const showLabel = `Show the prompt box (${modifierLabel()}H)`;
 
   return (
     <div className="absolute inset-0 z-[45] flex flex-col bg-background animate-in fade-in-0 duration-150">
@@ -270,7 +276,21 @@ export function ChatView({
       {!readOnly && (
         <div className="shrink-0 px-4 pt-1 pb-4">
           <div className="mx-auto w-full max-w-3xl">
-            <div ref={composerHostRef} />
+            {composerHidden && (
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={showLabel}
+                  onClick={onShowComposer}
+                  className="shadow-lg"
+                >
+                  <ChevronUp />
+                  <span className="sr-only">{showLabel}</span>
+                </Button>
+              </div>
+            )}
+            <div ref={composerHostRef} className={cn(composerHidden && "hidden")} />
           </div>
         </div>
       )}

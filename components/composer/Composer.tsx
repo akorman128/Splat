@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Clock,
   GitBranch,
+  Loader2,
   Paperclip,
   RefreshCw,
   Sparkles,
@@ -736,23 +737,28 @@ export function Composer({
           />
         )}
         <Button
-          size="sm"
+          size="icon-sm"
           className="ml-auto"
-          title={uploading ? "Waiting for the upload to finish" : undefined}
+          title={
+            uploading
+              ? "Waiting for the upload to finish"
+              : regenerateNodeId
+                ? "Regenerate"
+                : "Send"
+          }
           onClick={submit}
           disabled={!prompt.trim() || sending || uploading}
         >
-          {regenerateNodeId ? (
-            <>
-              <RefreshCw className="size-4" />
-              Regenerate
-            </>
+          {sending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : regenerateNodeId ? (
+            <RefreshCw className="size-4" />
           ) : (
-            <>
-              <ArrowUp className="size-4" />
-              <span className="max-sm:sr-only">Send</span>
-            </>
+            <ArrowUp className="size-4" />
           )}
+          <span className="sr-only">
+            {regenerateNodeId ? "Regenerate" : "Send"}
+          </span>
         </Button>
       </div>
     </div>
