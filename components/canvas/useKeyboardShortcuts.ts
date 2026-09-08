@@ -5,6 +5,7 @@ import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import { firstRootId, neighboursOf, type Neighbours } from "@/lib/graph/neighbours";
 import { copyCard } from "@/lib/export/copy-card";
+import { inHighlightPopover } from "@/lib/highlights/dom";
 
 const NAV_KEYS: Record<string, keyof Neighbours> = {
   ArrowUp: "parentId",
@@ -42,7 +43,7 @@ export function useKeyboardShortcuts({
 }) {
   useEffect(() => {
     function handle(event: KeyboardEvent) {
-      if (event.altKey) return;
+      if (event.altKey || inHighlightPopover(event.target)) return;
 
       const graph = useGraphStore.getState();
       const claim = () => {

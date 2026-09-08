@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { ConversationShell } from "@/components/canvas/ConversationShell";
 import type { CredentialSummary, SkillSummary } from "@/lib/types";
+import { asHighlightColor } from "@/lib/highlights/palette";
 import type { Provider } from "@/lib/providers/models";
 
 // None of these depends on which conversation is open, so they are read once
@@ -17,7 +18,7 @@ export default async function ConversationLayout({
     await Promise.all([
       supabase.from("provider_creds").select("provider, key_last4"),
       supabase.from("skills").select("id, name").order("name"),
-      supabase.from("profiles").select("web_search").maybeSingle(),
+      supabase.from("profiles").select("web_search, highlight_color").maybeSingle(),
     ]);
 
   return (
@@ -30,6 +31,7 @@ export default async function ConversationLayout({
       }
       skills={(skills ?? []) satisfies SkillSummary[]}
       webSearchDefault={profile?.web_search ?? true}
+      highlightColor={asHighlightColor(profile?.highlight_color)}
     >
       <Suspense fallback={null}>{children}</Suspense>
     </ConversationShell>

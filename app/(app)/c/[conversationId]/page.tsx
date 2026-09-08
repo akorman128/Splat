@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { GraphHydrator } from "@/components/canvas/GraphHydrator";
 import { StreamWatcher } from "@/components/canvas/StreamWatcher";
 import { CARD_ATTACHMENT_COLUMNS } from "@/lib/attachments/types";
+import { HIGHLIGHT_COLUMNS } from "@/lib/highlights/palette";
 import { INTERRUPTED_MESSAGE, isStaleStream } from "@/lib/streams/stale";
 import { reclaimStaleStreams } from "@/lib/streams/reclaim";
-import type { CardAttachment } from "@/lib/types";
+import type { CardAttachment, CardHighlight } from "@/lib/types";
 
 export default async function ConversationPage({
   params,
@@ -42,18 +43,26 @@ export default async function ConversationPage({
   );
 
   const nodeIds = nodes.map((n) => n.id);
-  const [{ data: edges }, { data: suggestions }, { data: attachments }] =
-    nodeIds.length
-      ? await Promise.all([
-          supabase.from("context_edges").select("*").in("node_id", nodeIds),
-          supabase.from("suggestions").select("*").in("node_id", nodeIds),
-          supabase
-            .from("attachments")
-            .select(CARD_ATTACHMENT_COLUMNS)
-            .in("node_id", nodeIds)
-            .order("created_at"),
-        ])
-      : [{ data: [] }, { data: [] }, { data: [] }];
+  const [
+    { data: edges },
+    { data: suggestions },
+    { data: attachments },
+    { data: highlights },
+  ] = nodeIds.length
+    ? await Promise.all([
+        supabase.from("context_edges").select("*").in("node_id", nodeIds),
+        supabase.from("suggestions").select("*").in("node_id", nodeIds),
+        supabase
+          .from("attachments")
+          .select(CARD_ATTACHMENT_COLUMNS)
+          .in("node_id", nodeIds)
+          .order("created_at"),
+        supabase
+          .from("highlights")
+          .select(HIGHLIGHT_COLUMNS)
+          .in("node_id", nodeIds),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
   return (
     <>
@@ -63,6 +72,7 @@ export default async function ConversationPage({
         edges={edges ?? []}
         suggestions={suggestions ?? []}
         attachments={(attachments ?? []) as CardAttachment[]}
+        highlights={(highlights ?? []) as CardHighlight[]}
       />
       <StreamWatcher conversationId={conversationId} />
     </>

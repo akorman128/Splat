@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { MAX_OUTPUT_TOKENS, MODELS } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { ANNOTATION_MAX_TOKENS, cleanAnswer } from "./annotate";
 import {
   ANTHROPIC_WEB_SEARCH,
   MAX_WEB_SEARCHES,
@@ -237,6 +238,37 @@ export const anthropicAdapter: ProviderAdapter = {
         ],
       });
       return toStructured(res.parsed_output);
+    };
+
+    try {
+      return await call(MODELS.anthropic.utility);
+    } catch (err) {
+      const fallback =
+        model && model !== MODELS.anthropic.utility
+          ? model
+          : MODELS.anthropic.conversation;
+      if (err instanceof Anthropic.NotFoundError) {
+        console.warn(
+          `[providers/anthropic] utility model ${MODELS.anthropic.utility} unavailable; falling back to ${fallback}`,
+        );
+        return await call(fallback);
+      }
+      throw err;
+    }
+  },
+
+  async answerHighlight({ apiKey, system, prompt, model }) {
+    const call = async (target: string) => {
+      const res = await client(apiKey).messages.create({
+        model: target,
+        max_tokens: ANNOTATION_MAX_TOKENS,
+        system,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = res.content
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .join("");
+      return { answer: cleanAnswer(text), model: target };
     };
 
     try {

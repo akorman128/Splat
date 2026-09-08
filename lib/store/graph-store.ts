@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type {
   CardAttachment,
+  CardHighlight,
   CardNode,
   ContextEdgeRow,
   SuggestionRow,
@@ -20,6 +21,7 @@ type GraphState = {
   suggestions: Record<string, SuggestionRow[]>;
   // Keyed by the card that owns the file, not by every card that replays it.
   attachments: Record<string, CardAttachment[]>;
+  highlights: Record<string, CardHighlight[]>;
   selectedNodeId: string | null;
   hoveredNodeId: string | null;
   expandedNodeId: string | null;
@@ -42,6 +44,9 @@ type GraphState = {
     edges: ContextEdgeRow[];
     suggestions: SuggestionRow[];
     attachments: CardAttachment[];
+    // A shared canvas is served without them: they are the owner's notes, not
+    // part of the conversation.
+    highlights?: CardHighlight[];
     readOnly?: boolean;
   }): void;
   adoptConversation(id: string): void;
@@ -49,6 +54,8 @@ type GraphState = {
   addEdges(edges: ContextEdgeRow[]): void;
   addAttachments(attachments: CardAttachment[]): void;
   setSuggestions(nodeId: string, rows: SuggestionRow[]): void;
+  upsertHighlight(highlight: CardHighlight): void;
+  removeHighlight(nodeId: string, highlightId: string): void;
   markSuggestionTaken(suggestionId: string, takenAt: string): void;
   setSelectedNode(id: string | null): void;
   setHoveredNode(id: string | null): void;
@@ -74,6 +81,22 @@ function countByConsumer(edges: ContextEdgeRow[]): Record<string, number> {
   return counts;
 }
 
+// Reading order, so a card's badges are numbered the way its text runs.
+function byPosition(a: CardHighlight, b: CardHighlight): number {
+  return a.text_offset - b.text_offset || a.created_at.localeCompare(b.created_at);
+}
+
+function groupHighlights(
+  highlights: CardHighlight[],
+): Record<string, CardHighlight[]> {
+  const grouped: Record<string, CardHighlight[]> = {};
+  for (const h of highlights) {
+    (grouped[h.node_id] ??= []).push(h);
+  }
+  for (const list of Object.values(grouped)) list.sort(byPosition);
+  return grouped;
+}
+
 function groupByOwner(
   attachments: CardAttachment[],
 ): Record<string, CardAttachment[]> {
@@ -97,6 +120,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   contextCounts: {},
   suggestions: {},
   attachments: {},
+  highlights: {},
   selectedNodeId: null,
   hoveredNodeId: null,
   expandedNodeId: null,
@@ -113,6 +137,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     edges,
     suggestions,
     attachments,
+    highlights = [],
     readOnly = false,
   }) {
     const suggestionMap: Record<string, SuggestionRow[]> = {};
@@ -131,6 +156,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       contextCounts: countByConsumer(edges),
       suggestions: suggestionMap,
       attachments: groupByOwner(attachments),
+      highlights: groupHighlights(highlights),
       selectedNodeId: null,
       hoveredNodeId: null,
       expandedNodeId: null,
@@ -199,6 +225,35 @@ export const useGraphStore = create<GraphState>((set) => ({
         [nodeId]: [...rows].sort((a, b) => a.position - b.position),
       },
     }));
+  },
+
+  upsertHighlight(highlight) {
+    set((state) => {
+      if (state.removedNodeIds[highlight.node_id]) return state;
+      const existing = state.highlights[highlight.node_id] ?? [];
+      const next = existing.some((h) => h.id === highlight.id)
+        ? existing.map((h) => (h.id === highlight.id ? highlight : h))
+        : [...existing, highlight];
+      return {
+        highlights: {
+          ...state.highlights,
+          [highlight.node_id]: next.sort(byPosition),
+        },
+      };
+    });
+  },
+
+  removeHighlight(nodeId, highlightId) {
+    set((state) => {
+      const existing = state.highlights[nodeId];
+      if (!existing) return state;
+      return {
+        highlights: {
+          ...state.highlights,
+          [nodeId]: existing.filter((h) => h.id !== highlightId),
+        },
+      };
+    });
   },
 
   markSuggestionTaken(suggestionId, takenAt) {
@@ -278,6 +333,10 @@ export const useGraphStore = create<GraphState>((set) => ({
       for (const [id, rows] of Object.entries(state.attachments)) {
         if (!gone.has(id)) attachments[id] = rows;
       }
+      const highlights: Record<string, CardHighlight[]> = {};
+      for (const [id, rows] of Object.entries(state.highlights)) {
+        if (!gone.has(id)) highlights[id] = rows;
+      }
       const edges = state.edges.filter(
         (e) => !gone.has(e.node_id) && !gone.has(e.source_node_id),
       );
@@ -298,6 +357,7 @@ export const useGraphStore = create<GraphState>((set) => ({
         contextCounts: countByConsumer(edges),
         suggestions,
         attachments,
+        highlights,
         removedNodeIds,
         deletingNodeIds: [],
         chatAnchorNodeId,

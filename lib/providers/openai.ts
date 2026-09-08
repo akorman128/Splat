@@ -4,6 +4,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { MODELS } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
+import { ANNOTATION_MAX_TOKENS, cleanAnswer } from "./annotate";
 import { OPENAI_WEB_SEARCH, datedWebSearchTool } from "./web-search";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
@@ -177,6 +178,34 @@ export const openaiAdapter: ProviderAdapter = {
         max_output_tokens: 2000,
       });
       return toStructured(res.output_parsed);
+    };
+
+    try {
+      return await call(MODELS.openai.utility);
+    } catch (err) {
+      const fallback =
+        model && model !== MODELS.openai.utility
+          ? model
+          : MODELS.openai.conversation;
+      if (err instanceof OpenAI.NotFoundError) {
+        console.warn(
+          `[providers/openai] utility model ${MODELS.openai.utility} unavailable; falling back to ${fallback}`,
+        );
+        return await call(fallback);
+      }
+      throw err;
+    }
+  },
+
+  async answerHighlight({ apiKey, system, prompt, model }) {
+    const call = async (target: string) => {
+      const res = await client(apiKey).responses.create({
+        model: target,
+        instructions: system,
+        input: [{ role: "user", content: prompt }],
+        max_output_tokens: ANNOTATION_MAX_TOKENS,
+      });
+      return { answer: cleanAnswer(res.output_text), model: target };
     };
 
     try {

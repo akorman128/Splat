@@ -7,6 +7,7 @@ import { useAttachmentStore } from "@/lib/store/attachment-store";
 import { sweepAttachments } from "@/lib/attachments-client";
 import type {
   CardAttachment,
+  CardHighlight,
   ContextEdgeRow,
   NodeRow,
   SuggestionRow,
@@ -20,12 +21,14 @@ export function GraphHydrator({
   edges,
   suggestions,
   attachments,
+  highlights,
 }: {
   conversationId: string | null;
   nodes: NodeRow[];
   edges: ContextEdgeRow[];
   suggestions: SuggestionRow[];
   attachments: CardAttachment[];
+  highlights: CardHighlight[];
 }) {
   useEffect(() => {
     const graph = useGraphStore.getState();
@@ -34,7 +37,14 @@ export function GraphHydrator({
     // card mid-stream, and the reset would drop the chips that created the
     // conversation in the first place.
     if (graph.conversationId !== conversationId) {
-      graph.init({ conversationId, nodes, edges, suggestions, attachments });
+      graph.init({
+        conversationId,
+        nodes,
+        edges,
+        suggestions,
+        attachments,
+        highlights,
+      });
       useComposerStore.getState().setRegenerateNode(null);
       useAttachmentStore.getState().reset();
     }

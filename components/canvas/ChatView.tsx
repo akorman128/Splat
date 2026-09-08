@@ -10,6 +10,7 @@ import { useComposerStore } from "@/lib/store/composer-store";
 import { useSubmitSuggestion } from "@/lib/chat-actions";
 import { siblingIds, threadOf } from "@/lib/graph/thread";
 import { modifierLabel } from "@/lib/shortcuts";
+import { inHighlightPopover } from "@/lib/highlights/dom";
 import { ChatMessage } from "./ChatMessage";
 import { useCardState } from "./useCardState";
 
@@ -76,10 +77,21 @@ export function ChatView({
   const rootTitle = thread.length > 0 ? nodes[thread[0]]?.title : undefined;
 
   // Which message the arrows and ⌘R act on. A request that a branch switch or
-  // a deletion took out of the thread falls back to the leaf.
-  const [focusRequest, setFocusRequest] = useState<string | null>(anchorNodeId);
+  // a deletion took out of the thread falls back to the leaf. `scroll` is
+  // whether the message needs bringing into view: a keyboard step does, a
+  // click does not — the message is under the pointer, and "nearest" on one
+  // taller than the viewport jumps to its top mid-gesture, which is enough to
+  // break the text selection the click was starting.
+  const [focusRequest, setFocusRequest] = useState<{
+    id: string;
+    scroll: boolean;
+  } | null>(anchorNodeId ? { id: anchorNodeId, scroll: true } : null);
   const focusedId =
-    focusRequest && thread.includes(focusRequest) ? focusRequest : leafId;
+    focusRequest && thread.includes(focusRequest.id) ? focusRequest.id : leafId;
+  const focusByPointer = useCallback(
+    (id: string) => setFocusRequest({ id, scroll: false }),
+    [],
+  );
 
   // Each message's place in its branch group, worked out here so a message
   // needs no view of the graph: subscribing every one of them to the node map
@@ -112,7 +124,7 @@ export function ChatView({
   }, [leafId, setReplyTarget]);
 
   const switchBranch = useCallback((nodeId: string) => {
-    setFocusRequest(nodeId);
+    setFocusRequest({ id: nodeId, scroll: true });
     useGraphStore.getState().setChatAnchor(nodeId);
   }, []);
 
@@ -131,7 +143,7 @@ export function ChatView({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.altKey || event.shiftKey) return;
-      if (popupIsOpen()) return;
+      if (popupIsOpen() || inHighlightPopover(event.target)) return;
 
       // ⌘R acts on the message holding focus. The canvas shortcut cannot: it
       // reads the selection, which no longer follows the thread.
@@ -163,7 +175,7 @@ export function ChatView({
 
       if (step.axis === "thread") {
         const next = thread[thread.indexOf(from) + step.delta];
-        if (next) setFocusRequest(next);
+        if (next) setFocusRequest({ id: next, scroll: true });
         return;
       }
       const group = branches.get(from);
@@ -176,8 +188,8 @@ export function ChatView({
   }, [onClose, thread, focusedId, branches, switchBranch]);
 
   useEffect(() => {
-    if (!focusRequest) return;
-    messageAt(focusRequest)?.scrollIntoView({ block: "nearest" });
+    if (!focusRequest?.scroll) return;
+    messageAt(focusRequest.id)?.scrollIntoView({ block: "nearest" });
   }, [focusRequest, messageAt]);
 
   const openedRef = useRef(false);
@@ -263,7 +275,7 @@ export function ChatView({
                 branchCount={branch?.count ?? 1}
                 prevBranchId={branch?.prev ?? null}
                 nextBranchId={branch?.next ?? null}
-                onFocus={setFocusRequest}
+                onFocus={focusByPointer}
                 onSwitchBranch={switchBranch}
                 onShowOnCanvas={showOnCanvas}
               />
