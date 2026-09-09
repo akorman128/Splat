@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, ChevronsUpDownIcon, Globe, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Brain,
+  CheckIcon,
+  ChevronsUpDownIcon,
+  Globe,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,10 +19,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { apiFetch } from "@/lib/query/api";
-import { queryKeys } from "@/lib/query/keys";
+import { useModelCatalog } from "@/lib/query/models";
 import { PROVIDER_LABELS, type CatalogModel, type Provider } from "@/lib/providers/models";
-import { THINKING_LABELS, type ThinkingLevel } from "@/lib/providers/thinking";
+import { thinkingSummary, type ThinkingLevel } from "@/lib/providers/thinking";
 import { ThinkingPicker } from "./ThinkingPicker";
 import { WebSearchPicker } from "./WebSearchPicker";
 import { formatTokens } from "@/lib/tokens";
@@ -59,6 +63,7 @@ export function ModelPicker({
   onThinkingChange,
   webSearch,
   onWebSearchChange,
+  searchable,
 }: {
   provider: Provider;
   value: string;
@@ -67,40 +72,25 @@ export function ModelPicker({
   onThinkingChange: (level: ThinkingLevel | null) => void;
   webSearch: boolean;
   onWebSearchChange: (webSearch: boolean) => void;
+  searchable: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  const {
-    data: models,
-    error,
-    isFetching,
-  } = useQuery({
-    queryKey: queryKeys.models(provider),
-    queryFn: async () => {
-      const body = await apiFetch<{ models?: CatalogModel[] }>(
-        `/api/models?provider=${provider}`,
-      );
-      if (!body.models) throw new Error("Could not load models");
-      return body.models;
-    },
-    enabled: open,
-    staleTime: Infinity,
-  });
+  const { data: models, error, isFetching } = useModelCatalog(provider, open);
+
+  const summary = [
+    value,
+    thinkingSummary(thinking),
+    webSearch ? "web search" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const priced = useMemo(
     () => (models ? publishesPrices(models) : false),
     [models],
   );
-
-  // Until the list loads there is nothing to hide the toggle on, and a model
-  // the list does not name is one the catalogue could not speak for — neither
-  // is a reason to take the control away.
-  const searchable = models?.find((m) => m.id === value)?.supportsWebSearch ?? true;
-
-  useEffect(() => {
-    if (webSearch && !searchable) onWebSearchChange(false);
-  }, [webSearch, searchable, onWebSearchChange]);
 
   const matches = useMemo(() => {
     if (!models) return [];
@@ -117,17 +107,19 @@ export function ModelPicker({
       <Button
         variant="outline"
         size="sm"
-        className="min-w-0 text-xs font-normal"
+        title={summary}
+        // The one control on the row that reads fine cut short, so it is the
+        // one that gives up its width.
+        className="min-w-0 shrink text-xs font-normal"
         onClick={() => setOpen(true)}
       >
-        <span className="min-w-0 max-w-48 truncate">{value}</span>
+        <span className="max-w-48 truncate">{value}</span>
+        {/* Below md nothing else on the row shows these two. */}
         {thinking && (
-          <span className="shrink-0 text-muted-foreground">
-            · {THINKING_LABELS[thinking]}
-          </span>
+          <Brain className="size-3.5 shrink-0 text-muted-foreground md:hidden" />
         )}
         {webSearch && (
-          <Globe className="size-3.5 shrink-0 text-muted-foreground" />
+          <Globe className="size-3.5 shrink-0 text-muted-foreground md:hidden" />
         )}
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </Button>
@@ -222,9 +214,13 @@ export function ModelPicker({
             )}
           </ScrollArea>
 
-          <ThinkingPicker value={thinking} onChange={onThinkingChange} />
+          <div className="md:hidden">
+            <ThinkingPicker value={thinking} onChange={onThinkingChange} />
+          </div>
           {searchable && (
-            <WebSearchPicker value={webSearch} onChange={onWebSearchChange} />
+            <div className="md:hidden">
+              <WebSearchPicker value={webSearch} onChange={onWebSearchChange} />
+            </div>
           )}
         </DialogContent>
       </Dialog>

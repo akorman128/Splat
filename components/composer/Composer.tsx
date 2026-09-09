@@ -35,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { ContextPicker } from "./ContextPicker";
 import { ModelPicker } from "./ModelPicker";
+import { ThinkingMenu } from "./ThinkingMenu";
+import { WebSearchMenu } from "./WebSearchMenu";
 import { SkillMenu, matchSkills, skillTriggerAt, type SkillTrigger } from "./SkillMenu";
 import { AttachmentChips } from "./AttachmentChips";
 import { AttachmentLibrary } from "./AttachmentLibrary";
@@ -45,6 +47,7 @@ import {
   useAttachmentStore,
 } from "@/lib/store/attachment-store";
 import { useChatStream } from "@/lib/chat-client";
+import { modelSearchesWeb, useModelCatalog } from "@/lib/query/models";
 import { parentChain } from "@/lib/graph/ancestors";
 import { childPosition, rootPosition } from "@/lib/layout";
 import {
@@ -162,6 +165,12 @@ export function Composer({
   const setWebSearch = useComposerStore((s) => s.setWebSearch);
   const regenerateNodeId = useComposerStore((s) => s.regenerateNodeId);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
+  // The dialog is what fetches the catalogue; this only reads what it cached.
+  const { data: catalog } = useModelCatalog(provider, false);
+  const searchable = modelSearchesWeb(
+    catalog,
+    provider ? (model ?? defaultModel(provider)) : null,
+  );
   // The chat replies at its thread's leaf; the canvas replies to the selected
   // card. Both arrive here as the parent this prompt branches from.
   const parent = useGraphStore((s) => {
@@ -178,6 +187,10 @@ export function Composer({
   useEffect(() => {
     useComposerStore.getState().setWebSearchDefault(webSearchDefault);
   }, [webSearchDefault]);
+
+  useEffect(() => {
+    if (webSearch && !searchable) setWebSearch(false);
+  }, [webSearch, searchable, setWebSearch]);
 
   useEffect(() => {
     if (!provider || !connectedProviders.includes(provider)) {
@@ -661,84 +674,106 @@ export function Composer({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {attachable && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                pick(Array.from(e.target.files ?? []));
-                e.target.value = "";
-              }}
-            />
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title="Attach a file (or drop one anywhere on the canvas)"
-                  />
-                }
-              >
-                <Paperclip />
-                <span className="sr-only">Attach a file</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-52">
-                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="size-4" />
-                  Upload from this device
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setLibraryOpen(true)}>
-                  <Clock className="size-4" />
-                  Attach an earlier file
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <AttachmentLibrary
-              open={libraryOpen}
-              onOpenChange={setLibraryOpen}
-            />
-          </>
-        )}
-        <Select
-          value={provider}
-          onValueChange={(value) => {
-            if (typeof value === "string" && isProvider(value)) {
-              setProvider(value as Provider);
-            }
-          }}
-        >
-          <SelectTrigger size="sm" className="w-auto text-xs">
-            <SelectValue>
-              {provider ? PROVIDER_LABELS[provider] : "Provider"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {connectedProviders.map((p) => (
-              <SelectItem key={p} value={p} className="text-xs">
-                {PROVIDER_LABELS[p]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {provider && (
-          <ModelPicker
-            provider={provider}
-            value={model ?? defaultModel(provider)}
-            onChange={setModel}
-            thinking={thinking}
-            onThinkingChange={setThinking}
-            webSearch={webSearch}
-            onWebSearchChange={setWebSearch}
-          />
-        )}
+      {/* Send is measured out first and everything else shares what is left,
+          so on a phone the row shortens rather than wrapping Send away. */}
+      <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          {attachable && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  pick(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Attach a file (or drop one anywhere on the canvas)"
+                    />
+                  }
+                >
+                  <Paperclip />
+                  <span className="sr-only">Attach a file</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="start" className="w-52">
+                  <DropdownMenuItem
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="size-4" />
+                    Upload from this device
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLibraryOpen(true)}>
+                    <Clock className="size-4" />
+                    Attach an earlier file
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <AttachmentLibrary
+                open={libraryOpen}
+                onOpenChange={setLibraryOpen}
+              />
+            </>
+          )}
+          <Select
+            value={provider}
+            onValueChange={(value) => {
+              if (typeof value === "string" && isProvider(value)) {
+                setProvider(value as Provider);
+              }
+            }}
+          >
+            <SelectTrigger size="sm" className="w-auto text-xs">
+              <SelectValue>
+                {provider ? PROVIDER_LABELS[provider] : "Provider"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {connectedProviders.map((p) => (
+                <SelectItem key={p} value={p} className="text-xs">
+                  {PROVIDER_LABELS[p]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {provider && (
+            <>
+              <ModelPicker
+                provider={provider}
+                value={model ?? defaultModel(provider)}
+                onChange={setModel}
+                thinking={thinking}
+                onThinkingChange={setThinking}
+                webSearch={webSearch}
+                onWebSearchChange={setWebSearch}
+                searchable={searchable}
+              />
+              {/* Below md these two live in the model dialog instead — the
+                  row has no width to spare for them. */}
+              <ThinkingMenu
+                value={thinking}
+                onChange={setThinking}
+                className="hidden md:inline-flex"
+              />
+              {searchable && (
+                <WebSearchMenu
+                  value={webSearch}
+                  onChange={setWebSearch}
+                  className="hidden md:inline-flex"
+                />
+              )}
+            </>
+          )}
+        </div>
         <Button
           size="icon-sm"
-          className="ml-auto"
           title={
             uploading
               ? "Waiting for the upload to finish"
