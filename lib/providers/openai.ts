@@ -5,7 +5,11 @@ import { MODELS } from "./models";
 import { catalogEntry } from "./catalog";
 import { FollowupsSchema, followupsPrompt, toStructured } from "./followups";
 import { ANNOTATION_MAX_TOKENS, cleanAnswer } from "./annotate";
-import { OPENAI_WEB_SEARCH, datedWebSearchTool } from "./web-search";
+import {
+  OPENAI_WEB_SEARCH,
+  datedWebSearchTool,
+  type Citation,
+} from "./web-search";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
 
@@ -30,23 +34,19 @@ async function webSearchTools(
   return [{ type: datedWebSearchTool(OPENAI_WEB_SEARCH, entry) }];
 }
 
-function urlCitations(response: OpenAI.Responses.Response): StreamEvent[] {
-  const events: StreamEvent[] = [];
+function urlCitations(response: OpenAI.Responses.Response): Citation[] {
+  const citations: Citation[] = [];
   for (const item of response.output) {
     if (item.type !== "message") continue;
     for (const part of item.content) {
       if (part.type !== "output_text") continue;
       for (const annotation of part.annotations) {
         if (annotation.type !== "url_citation") continue;
-        events.push({
-          type: "citation",
-          title: annotation.title,
-          url: annotation.url,
-        });
+        citations.push({ title: annotation.title, url: annotation.url });
       }
     }
   }
-  return events;
+  return citations;
 }
 
 function toResponsesInput(
@@ -104,7 +104,10 @@ async function* runChat(
     } else if (event.type === "response.completed") {
       // Read off the finished response rather than the annotation events,
       // which type their payload as unknown.
-      citations = urlCitations(event.response);
+      citations = urlCitations(event.response).map((citation) => ({
+        type: "citation" as const,
+        ...citation,
+      }));
       usage = {
         promptTokens: event.response.usage?.input_tokens ?? null,
         completionTokens: event.response.usage?.output_tokens ?? null,
@@ -203,9 +206,14 @@ export const openaiAdapter: ProviderAdapter = {
         model: target,
         instructions: system,
         input: [{ role: "user", content: prompt }],
+        tools: await webSearchTools(apiKey, target),
         max_output_tokens: ANNOTATION_MAX_TOKENS,
       });
-      return { answer: cleanAnswer(res.output_text), model: target };
+      return {
+        answer: cleanAnswer(res.output_text),
+        model: target,
+        citations: urlCitations(res),
+      };
     };
 
     try {

@@ -9,6 +9,7 @@ import {
   MAX_WEB_SEARCHES,
   OPENROUTER_WEB_SEARCH,
   WEB_SEARCH_RESERVE_TOKENS,
+  type Citation,
 } from "./web-search";
 import { estimateImageTokens } from "@/lib/tokens";
 import type { ThinkingLevel } from "./thinking";
@@ -32,6 +33,11 @@ type OpenRouterStreamBody = Omit<
   reasoning?: { effort: "none" | ThinkingLevel };
   tools?: ServerTool[];
 };
+
+type OpenRouterBody = Omit<
+  OpenAI.ChatCompletionCreateParamsNonStreaming,
+  "tools"
+> & { tools?: ServerTool[] };
 
 function reasoningParams(
   level: ThinkingLevel | null,
@@ -57,6 +63,18 @@ function webSearchParams(
       },
     ],
   };
+}
+
+// Unlike a card, nobody picked this model or ticked the box — so the one thing
+// that would turn the search tool into a 400, a model that cannot call a tool
+// at all, is checked rather than sent blind. An unreachable catalogue is not
+// that case, and the utility models are all tool-callers.
+async function annotationWebSearch(
+  apiKey: string,
+  model: string,
+): Promise<Pick<OpenRouterBody, "tools">> {
+  const entry = await catalogEntry("openrouter", model, apiKey);
+  return webSearchParams(entry ? entry.supportsWebSearch : true);
 }
 
 function attributionHeaders(): Record<string, string> {
@@ -283,22 +301,26 @@ type MaybeAnnotatedChunk = {
   choices?: ({ delta?: { annotations?: unknown } | null } | null)[];
 };
 
-function chunkCitations(chunk: MaybeAnnotatedChunk): StreamEvent[] {
-  const annotations = chunk.choices?.[0]?.delta?.annotations;
+function annotationCitations(annotations: unknown): Citation[] {
   if (!Array.isArray(annotations)) return [];
-  const events: StreamEvent[] = [];
+  const citations: Citation[] = [];
   for (const annotation of annotations) {
     const citation = (
       annotation as { url_citation?: { url?: unknown; title?: unknown } } | null
     )?.url_citation;
     if (!citation || typeof citation.url !== "string") continue;
-    events.push({
-      type: "citation",
+    citations.push({
       title: typeof citation.title === "string" ? citation.title : null,
       url: citation.url,
     });
   }
-  return events;
+  return citations;
+}
+
+function chunkCitations(chunk: MaybeAnnotatedChunk): StreamEvent[] {
+  return annotationCitations(chunk.choices?.[0]?.delta?.annotations).map(
+    (citation) => ({ type: "citation" as const, ...citation }),
+  );
 }
 
 function streamErrorMessage(chunk: MaybeErrorChunk): string | null {
@@ -453,17 +475,23 @@ export const openrouterAdapter: ProviderAdapter = {
 
   async answerHighlight({ apiKey, system, prompt, model }) {
     const call = async (target: string) => {
-      const res = await client(apiKey).chat.completions.create({
+      const body: OpenRouterBody = {
         model: target,
         messages: [
           { role: "system", content: system },
           { role: "user", content: prompt },
         ],
         max_tokens: ANNOTATION_MAX_TOKENS,
-      });
+        ...(await annotationWebSearch(apiKey, target)),
+      };
+      const res = await client(apiKey).chat.completions.create(
+        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+      );
+      const message = res.choices[0]?.message;
       return {
-        answer: cleanAnswer(res.choices[0]?.message.content ?? ""),
+        answer: cleanAnswer(message?.content ?? ""),
         model: res.model || target,
+        citations: annotationCitations(message?.annotations),
       };
     };
 

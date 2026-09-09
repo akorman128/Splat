@@ -1,6 +1,7 @@
 import "server-only";
 import type { Provider } from "./models";
 import type { ThinkingLevel } from "./thinking";
+import type { Citation } from "./web-search";
 
 export type { Provider };
 
@@ -75,10 +76,16 @@ export interface ProviderAdapter {
   // utility model the follow-ups use — the fastest one the provider has — and
   // in one shot rather than a stream, because the answer is a paragraph read
   // in a popover, not a card.
+  //
+  // Always with the provider's web search tool, unlike a card, where searching
+  // is the sender's toggle: what a reader asks about a passage is as often
+  // whether it is still true as what it means, and the card the passage came
+  // from cannot be asked again. The model decides whether to use it, so a
+  // question the passage already answers costs nothing but the tool definition.
   answerHighlight(opts: {
     apiKey: string;
     system: string;
     prompt: string;
     model?: string;
-  }): Promise<{ answer: string; model: string }>;
+  }): Promise<{ answer: string; model: string; citations: Citation[] }>;
 }

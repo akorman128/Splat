@@ -9,6 +9,7 @@ import {
   ANTHROPIC_WEB_SEARCH,
   MAX_WEB_SEARCHES,
   datedWebSearchTool,
+  type Citation,
 } from "./web-search";
 import type { ThinkingLevel } from "./thinking";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "./types";
@@ -59,6 +60,20 @@ async function webSearchTools(
 // pause_turn and resumes when the paused assistant turn is sent back — no extra
 // user message, which the API would read as a new instruction.
 const MAX_PAUSED_TURNS = 4;
+
+// What the stream reads off citations_delta, read off a finished message
+// instead: the sources the answer cited, in the order it cited them.
+function messageCitations(content: Anthropic.ContentBlock[]): Citation[] {
+  const citations: Citation[] = [];
+  for (const block of content) {
+    if (block.type !== "text") continue;
+    for (const citation of block.citations ?? []) {
+      if (citation.type !== "web_search_result_location") continue;
+      citations.push({ title: citation.title, url: citation.url });
+    }
+  }
+  return citations;
+}
 
 function toAnthropic(messages: ChatMessage[]): Anthropic.MessageParam[] {
   return messages.map((message): Anthropic.MessageParam => {
@@ -259,16 +274,33 @@ export const anthropicAdapter: ProviderAdapter = {
 
   async answerHighlight({ apiKey, system, prompt, model }) {
     const call = async (target: string) => {
-      const res = await client(apiKey).messages.create({
-        model: target,
-        max_tokens: ANNOTATION_MAX_TOKENS,
-        system,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const text = res.content
-        .map((block) => (block.type === "text" ? block.text : ""))
-        .join("");
-      return { answer: cleanAnswer(text), model: target };
+      const tools = await webSearchTools(apiKey, target);
+      const history: Anthropic.MessageParam[] = [
+        { role: "user", content: prompt },
+      ];
+      const citations: Citation[] = [];
+      let text = "";
+
+      // The same resume the stream does, and needed for the same reason: a
+      // paused search turn carries the answer so far and nothing that finishes
+      // it, so a single call would hand the reader a fragment.
+      for (let turn = 0; ; turn++) {
+        const res = await client(apiKey).messages.create({
+          model: target,
+          max_tokens: ANNOTATION_MAX_TOKENS,
+          system,
+          tools,
+          messages: history,
+        });
+        text += res.content
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join("");
+        citations.push(...messageCitations(res.content));
+        if (res.stop_reason !== "pause_turn" || turn >= MAX_PAUSED_TURNS) break;
+        history.push({ role: "assistant", content: res.content });
+      }
+
+      return { answer: cleanAnswer(text), model: target, citations };
     };
 
     try {

@@ -10,10 +10,13 @@ import {
   annotationContext,
   annotationPrompt,
 } from "@/lib/providers/annotate";
+import { citationsMarkdown } from "@/lib/providers/web-search";
 import { MAX_QUOTE_LENGTH } from "@/lib/highlights/anchor";
 import type { Provider } from "@/lib/providers/models";
 
-export const maxDuration = 60;
+// Longer than a one-shot annotation needed: the model may search before it
+// writes, and a query-and-read round trip is most of a minute on its own.
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -90,7 +93,13 @@ export async function POST(request: Request) {
         context: annotationContext(node.response, quote),
       }),
     });
-    return NextResponse.json(result);
+    // Part of the answer rather than a field of its own, so the sources are
+    // kept, edited and exported with the note the reader saves.
+    const sources = citationsMarkdown(result.citations);
+    return NextResponse.json({
+      answer: sources ? `${result.answer}${sources}` : result.answer,
+      model: result.model,
+    });
   } catch (err) {
     return NextResponse.json(
       {
