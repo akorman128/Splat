@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronUp, MessageSquareText, X } from "lucide-react";
+import { ArrowUp, ChevronUp, MessageSquareText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
@@ -140,24 +140,21 @@ export function ChatView({
     [],
   );
 
-  // A long answer pushes the prompt that asked for it off the top of the
-  // screen, so the first ↑ brings that prompt back rather than stepping over
-  // it to the message above. Reports whether it had anywhere to scroll.
-  const revealPrompt = useCallback((nodeId: string) => {
+  // The top of the conversation as a reader means it: the prompt that opened
+  // the exchange on screen, not the start of the whole transcript.
+  const scrollToTop = useCallback(() => {
     const scroller = scrollRef.current;
-    const prompt = scroller?.querySelector(
-      `[data-message-id="${nodeId}"] [data-message-prompt]`,
-    );
-    if (!scroller || !prompt) return false;
+    const prompt = leafId
+      ? scroller?.querySelector(`[data-message-id="${leafId}"] [data-message-prompt]`)
+      : null;
+    if (!scroller || !prompt) return;
     const view = scroller.getBoundingClientRect();
     const box = prompt.getBoundingClientRect();
-    if (box.top >= view.top) return false;
     scroller.scrollTo({
       top: scroller.scrollTop + box.top - view.top - 24,
       behavior: "smooth",
     });
-    return true;
-  }, []);
+  }, [leafId]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -193,7 +190,6 @@ export function ChatView({
       event.stopPropagation();
 
       if (step.axis === "thread") {
-        if (step.delta < 0 && revealPrompt(from)) return;
         const next = thread[thread.indexOf(from) + step.delta];
         if (next) setFocusRequest({ id: next, scroll: true });
         return;
@@ -205,7 +201,7 @@ export function ChatView({
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [onClose, thread, focusedId, branches, switchBranch, revealPrompt]);
+  }, [onClose, thread, focusedId, branches, switchBranch]);
 
   useEffect(() => {
     if (!focusRequest?.scroll) return;
@@ -272,10 +268,19 @@ export function ChatView({
         </span>
         <Button
           variant="ghost"
+          size="sm"
+          onClick={scrollToTop}
+          className="ml-auto shrink-0 text-muted-foreground"
+        >
+          <ArrowUp />
+          Scroll to top
+        </Button>
+        <Button
+          variant="ghost"
           size="icon-sm"
           title={closeLabel}
           onClick={onClose}
-          className="ml-auto shrink-0"
+          className="shrink-0"
         >
           <X />
           <span className="sr-only">{closeLabel}</span>

@@ -37,7 +37,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Chat view",
     shortcuts: [
       { keys: [MOD, "I"], label: "Open the canvas as a chat, and back" },
-      { keys: ["↑"], label: "Back to this message's prompt, then the one above" },
+      { keys: ["↑"], label: "Move to the message above" },
       { keys: ["↓"], label: "Move to the message below" },
       { keys: ["←"], label: "Previous branch of the current message" },
       { keys: ["→"], label: "Next branch of the current message" },
