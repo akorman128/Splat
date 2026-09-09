@@ -3,8 +3,10 @@ import "server-only";
 // Brevity is the prompt's job, not this number's: it is a ceiling, and on a
 // reasoning model the budget covers the thinking as well as the answer, so a
 // tight one is spent before a word is written and the reader gets an empty
-// response rather than a short one. Matches the follow-ups budget.
-export const ANNOTATION_MAX_TOKENS = 2000;
+// response rather than a short one. Web search spends it too — the queries and
+// the reading between them are billed as output on the way to a paragraph — so
+// this sits above the follow-ups budget rather than matching it.
+export const ANNOTATION_MAX_TOKENS = 4000;
 
 // How much of the answer either side of the quote rides along. A quote lifted
 // out of its paragraph is often unreadable on its own — "it does not, for the
@@ -98,10 +100,13 @@ export const ANNOTATION_SYSTEM = [
   "You answer a reader's question about one passage they highlighted in a",
   "longer AI-generated answer. Address the highlighted passage specifically,",
   "not the surrounding text, which is given only so you can read the passage",
-  "in context. Be direct and concrete: at most 120 words, no preamble, no",
-  "restating the question, no offer to help further. Plain prose, or a short",
-  "list where that genuinely reads better. Say so plainly if the passage does",
-  "not contain enough to answer.",
+  "in context. You can search the web: search when the answer turns on",
+  "something current or checkable — what a thing costs, whether it shipped,",
+  "whether the passage is still true — and answer straight from the passage",
+  "when it does not. Be direct and concrete: at most 120 words, no preamble,",
+  "no restating the question, no offer to help further. Plain prose, or a",
+  "short list where that genuinely reads better. Say so plainly if neither",
+  "the passage nor a search settles it.",
 ].join(" ");
 
 export const DEFAULT_QUESTION = "What does this mean?";
