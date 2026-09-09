@@ -19,7 +19,12 @@ export const MODELS: Record<Provider, Record<ModelRole, string>> = {
   },
   openrouter: {
     conversation: OPENROUTER_AUTO,
-    utility: "google/gemini-2.5-flash-lite",
+    // Not the cheaper -lite: the utility role answers a reader's highlight, and
+    // that call is now a tool-calling one. Given the same prompt and the same
+    // search tool, -lite answered that it had no access to anything beyond the
+    // passage while this reached for the tool, and the search itself costs more
+    // than the difference between the two models.
+    utility: "google/gemini-2.5-flash",
   },
 };
 
