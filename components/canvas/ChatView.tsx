@@ -140,6 +140,25 @@ export function ChatView({
     [],
   );
 
+  // A long answer pushes the prompt that asked for it off the top of the
+  // screen, so the first ↑ brings that prompt back rather than stepping over
+  // it to the message above. Reports whether it had anywhere to scroll.
+  const revealPrompt = useCallback((nodeId: string) => {
+    const scroller = scrollRef.current;
+    const prompt = scroller?.querySelector(
+      `[data-message-id="${nodeId}"] [data-message-prompt]`,
+    );
+    if (!scroller || !prompt) return false;
+    const view = scroller.getBoundingClientRect();
+    const box = prompt.getBoundingClientRect();
+    if (box.top >= view.top) return false;
+    scroller.scrollTo({
+      top: scroller.scrollTop + box.top - view.top - 24,
+      behavior: "smooth",
+    });
+    return true;
+  }, []);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.altKey || event.shiftKey) return;
@@ -174,6 +193,7 @@ export function ChatView({
       event.stopPropagation();
 
       if (step.axis === "thread") {
+        if (step.delta < 0 && revealPrompt(from)) return;
         const next = thread[thread.indexOf(from) + step.delta];
         if (next) setFocusRequest({ id: next, scroll: true });
         return;
@@ -185,7 +205,7 @@ export function ChatView({
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [onClose, thread, focusedId, branches, switchBranch]);
+  }, [onClose, thread, focusedId, branches, switchBranch, revealPrompt]);
 
   useEffect(() => {
     if (!focusRequest?.scroll) return;
