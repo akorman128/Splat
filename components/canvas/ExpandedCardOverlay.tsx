@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ArrowUp,
   Copy,
+  MessageSquareText,
   RefreshCw,
   Square,
   Trash2,
@@ -27,6 +28,7 @@ import { useComposerStore } from "@/lib/store/composer-store";
 import { useStopStream } from "@/lib/chat-client";
 import { copyCard } from "@/lib/export/copy-card";
 import { neighboursOf } from "@/lib/graph/neighbours";
+import { modifierLabel } from "@/lib/shortcuts";
 import { thinkingSummary } from "@/lib/providers/thinking";
 import { webSearchSummary } from "@/lib/providers/web-search";
 import { HighlightedResponse } from "@/components/highlights/HighlightedResponse";
@@ -87,6 +89,7 @@ export function ExpandedCardOverlay() {
   const setExpandedNode = useGraphStore((s) => s.setExpandedNode);
   const nodes = useGraphStore((s) => s.nodes);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
+  const openChat = useGraphStore((s) => s.openChat);
   const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const stopStream = useStopStream();
@@ -155,40 +158,97 @@ export function ExpandedCardOverlay() {
         </div>
 
         <div className="pointer-events-auto relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-popover ring-1 ring-foreground/10">
-          <DialogClose
-            render={
+          <div className="flex items-start gap-2 border-b py-4 pr-3 pl-6">
+            <DialogHeader className="min-w-0 flex-1">
+              <DialogTitle>{node.title ?? "Untitled"}</DialogTitle>
+              <DialogDescription
+                ref={promptRef}
+                className={
+                  promptOpen
+                    ? "max-h-56 overflow-y-auto whitespace-pre-wrap text-left"
+                    : "line-clamp-3 whitespace-pre-wrap text-left"
+                }
+              >
+                {node.prompt}
+              </DialogDescription>
+              {promptClamped && (
+                <button
+                  type="button"
+                  onClick={() => setPromptOpen((open) => !open)}
+                  className="w-fit text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  {promptOpen ? "Show less" : "Show more"}
+                </button>
+              )}
+            </DialogHeader>
+            <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
+              {isStreaming && !readOnly && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Stop generating"
+                  disabled={stopStream.isPending}
+                  onClick={() => stopStream.mutate(node.id)}
+                >
+                  <Square />
+                  <span className="sr-only">Stop generating</span>
+                </Button>
+              )}
+              {!isStreaming && !readOnly && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Regenerate answer"
+                  onClick={() => {
+                    setRegenerateNode(node.id);
+                    setExpandedNode(null);
+                  }}
+                >
+                  <RefreshCw />
+                  <span className="sr-only">Regenerate answer</span>
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="absolute top-2 right-2 z-10"
-              />
-            }
-          >
-            <XIcon />
-            <span className="sr-only">Close</span>
-          </DialogClose>
-          <DialogHeader className="border-b py-4 pr-12 pl-6">
-            <DialogTitle>{node.title ?? "Untitled"}</DialogTitle>
-            <DialogDescription
-              ref={promptRef}
-              className={
-                promptOpen
-                  ? "max-h-56 overflow-y-auto whitespace-pre-wrap text-left"
-                  : "line-clamp-3 whitespace-pre-wrap text-left"
-              }
-            >
-              {node.prompt}
-            </DialogDescription>
-            {promptClamped && (
-              <button
-                type="button"
-                onClick={() => setPromptOpen((open) => !open)}
-                className="w-fit text-xs font-medium text-muted-foreground hover:text-foreground"
+                title="Copy card"
+                onClick={() => copyCard(node.id)}
               >
-                {promptOpen ? "Show less" : "Show more"}
-              </button>
-            )}
-          </DialogHeader>
+                <Copy />
+                <span className="sr-only">Copy card</span>
+              </Button>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title={`Open this thread as a chat (${modifierLabel()}I)`}
+                  onClick={() => openChat(node.id)}
+                >
+                  <MessageSquareText />
+                  <span className="sr-only">Open this thread as a chat</span>
+                </Button>
+              )}
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Delete card"
+                  onClick={() => {
+                    setDeletingNodes([node.id]);
+                    setExpandedNode(null);
+                  }}
+                  className="hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 />
+                  <span className="sr-only">Delete card</span>
+                </Button>
+              )}
+              <DialogClose render={<Button variant="ghost" size="icon-sm" />}>
+                <XIcon />
+                <span className="sr-only">Close</span>
+              </DialogClose>
+            </div>
+          </div>
           {attachments.length > 0 && (
             <div className="border-b px-6 py-3">
               <CardAttachmentList attachments={attachments} />
@@ -238,51 +298,6 @@ export function ExpandedCardOverlay() {
             <span className="ml-auto">
               {new Date(node.created_at).toLocaleString()}
             </span>
-            <button
-              type="button"
-              onClick={() => copyCard(node.id)}
-              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium hover:bg-accent hover:text-foreground"
-            >
-              <Copy className="size-3" />
-              Copy
-            </button>
-            {isStreaming && !readOnly && (
-              <button
-                type="button"
-                disabled={stopStream.isPending}
-                onClick={() => stopStream.mutate(node.id)}
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium hover:bg-accent hover:text-foreground disabled:opacity-50"
-              >
-                <Square className="size-3" />
-                Stop
-              </button>
-            )}
-            {!isStreaming && !readOnly && (
-              <button
-                type="button"
-                onClick={() => {
-                  setRegenerateNode(node.id);
-                  setExpandedNode(null);
-                }}
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium hover:bg-accent hover:text-foreground"
-              >
-                <RefreshCw className="size-3" />
-                Regenerate
-              </button>
-            )}
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => {
-                  setDeletingNodes([node.id]);
-                  setExpandedNode(null);
-                }}
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 className="size-3" />
-                Delete
-              </button>
-            )}
           </div>
         </div>
 

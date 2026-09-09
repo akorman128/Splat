@@ -65,7 +65,7 @@ export const ChatMessage = memo(function ChatMessage({
         focused ? "border-primary/40" : "border-transparent",
       )}
     >
-      <div className="flex flex-col items-end gap-1.5">
+      <div data-message-prompt className="flex flex-col items-end gap-1.5">
         <span className="max-w-[85%] truncate text-[11px] font-medium text-muted-foreground">
           {node.title ?? (isStreaming ? "Thinking…" : "Untitled")}
         </span>

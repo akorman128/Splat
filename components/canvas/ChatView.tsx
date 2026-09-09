@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronUp, MessageSquareText, X } from "lucide-react";
+import { ArrowUp, ChevronUp, MessageSquareText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
@@ -140,6 +140,22 @@ export function ChatView({
     [],
   );
 
+  // The top of the conversation as a reader means it: the prompt that opened
+  // the exchange on screen, not the start of the whole transcript.
+  const scrollToTop = useCallback(() => {
+    const scroller = scrollRef.current;
+    const prompt = leafId
+      ? scroller?.querySelector(`[data-message-id="${leafId}"] [data-message-prompt]`)
+      : null;
+    if (!scroller || !prompt) return;
+    const view = scroller.getBoundingClientRect();
+    const box = prompt.getBoundingClientRect();
+    scroller.scrollTo({
+      top: scroller.scrollTop + box.top - view.top - 24,
+      behavior: "smooth",
+    });
+  }, [leafId]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.altKey || event.shiftKey) return;
@@ -252,10 +268,19 @@ export function ChatView({
         </span>
         <Button
           variant="ghost"
+          size="sm"
+          onClick={scrollToTop}
+          className="ml-auto shrink-0 text-muted-foreground"
+        >
+          <ArrowUp />
+          Scroll to top
+        </Button>
+        <Button
+          variant="ghost"
           size="icon-sm"
           title={closeLabel}
           onClick={onClose}
-          className="ml-auto shrink-0"
+          className="shrink-0"
         >
           <X />
           <span className="sr-only">{closeLabel}</span>
