@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  FOCUS_HIGHLIGHT_NAME,
   HIGHLIGHT_COLORS,
   highlightName,
   type HighlightColor,
@@ -41,4 +42,19 @@ export function setPaintedRanges(
 
 export function clearPaintedRanges(owner: string): void {
   if (byOwner.delete(owner)) flush();
+}
+
+const FLASH_MS = 1600;
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function flashRange(range: Range): void {
+  if (!canPaintHighlights()) return;
+  if (flashTimer) clearTimeout(flashTimer);
+  const focus = new Highlight(range);
+  focus.priority = 1;
+  CSS.highlights.set(FOCUS_HIGHLIGHT_NAME, focus);
+  flashTimer = setTimeout(() => {
+    CSS.highlights.delete(FOCUS_HIGHLIGHT_NAME);
+    flashTimer = null;
+  }, FLASH_MS);
 }

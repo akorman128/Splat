@@ -45,6 +45,15 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Highlights",
+    shortcuts: [
+      {
+        keys: [MOD, "Shift", "H"],
+        label: "Show or hide the highlights and comments panel",
+      },
+    ],
+  },
+  {
     title: "Composer",
     shortcuts: [
       { keys: ["Enter"], label: "Send the prompt" },

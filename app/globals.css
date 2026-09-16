@@ -160,3 +160,7 @@
   background-color: #c084fc;
   color: #1c1917;
 }
+::highlight(splat-hl-focus) {
+  text-decoration: underline 2px;
+  text-decoration-color: #1c1917;
+}

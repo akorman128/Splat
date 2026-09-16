@@ -20,6 +20,7 @@ import {
   type TextAnchor,
 } from "@/lib/highlights/anchor";
 import { clearPaintedRanges, setPaintedRanges } from "@/lib/highlights/paint";
+import { revealRange } from "@/lib/highlights/reveal";
 import {
   asHighlightColor,
   type HighlightColor,
@@ -27,14 +28,20 @@ import {
 import { createHighlight, deleteHighlight } from "@/lib/highlights/client";
 import { SelectionActions } from "./SelectionActions";
 import { AskHighlightPanel } from "./AskHighlightPanel";
+import { CommentHighlightPanel } from "./CommentHighlightPanel";
 import { HighlightBadge } from "./HighlightBadge";
 import type { CardHighlight } from "@/lib/types";
 
 const NONE: CardHighlight[] = [];
 const NO_BADGES: Badge[] = [];
 
-const TOOLBAR_WIDTH = 230;
+const TOOLBAR_WIDTH = 330;
 const PANEL_WIDTH = 320;
+
+// The same card is drawn on more than one of these at once — the canvas card
+// stays mounted under the chat overlay and under an expanded card — so a jump
+// to a passage has to name which of them the reader is actually looking at.
+type Surface = "canvas" | "chat" | "expanded";
 
 type Spot = { top: number; left: number };
 
@@ -51,6 +58,8 @@ function sameBadges(a: Badge[], b: Badge[]): boolean {
     )
   );
 }
+
+type Open = Spot & { id: string; kind: "ask" | "comment" };
 
 type Pending = Spot & {
   anchor: TextAnchor;
@@ -92,20 +101,32 @@ export function HighlightedResponse({
   text,
   className,
   interactive = false,
+  surface = "canvas",
 }: {
   nodeId: string;
   text: string;
   className?: string;
   interactive?: boolean;
+  surface?: Surface;
 }) {
   const highlights = useGraphStore((s) => s.highlights[nodeId] ?? NONE);
+  const onScreen = useGraphStore((s) =>
+    s.chatOpen
+      ? surface === "chat"
+      : s.expandedNodeId === nodeId
+        ? surface === "expanded"
+        : surface === "canvas",
+  );
+  const reveal = useGraphStore((s) =>
+    s.revealHighlight?.nodeId === nodeId ? s.revealHighlight : null,
+  );
   const color = useSettingsStore((s) => s.highlightColor);
   const rootRef = useRef<HTMLDivElement>(null);
   const owner = useId();
 
   const [badges, setBadges] = useState<Badge[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
-  const [asking, setAsking] = useState<(Spot & { id: string }) | null>(null);
+  const [open, setOpen] = useState<Open | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Paints the ranges and hands back where the badges go; the callers own the
@@ -135,7 +156,7 @@ export function HighlightedResponse({
         ranges.push(range);
         painted.set(key, ranges);
 
-        if (!highlight.note) continue;
+        if (!highlight.note && !highlight.comment) continue;
         const rects = range.getClientRects();
         const last = rects[rects.length - 1];
         if (!last) continue;
@@ -162,6 +183,24 @@ export function HighlightedResponse({
   }, [paint, text]);
 
   useEffect(() => () => clearPaintedRanges(owner), [owner]);
+
+  // Only the copy the reader is looking at: every surface drawing this card
+  // runs this effect on the same commit, and clearing the request does not
+  // stop the others in that pass — a hidden canvas card would scroll its own
+  // box out from under them. Left set until that surface has had its turn,
+  // because a card culled off the canvas mounts only once the camera arrives.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!reveal || !root || !onScreen) return;
+    const highlight = highlights.find((h) => h.id === reveal.id);
+    const range = highlight
+      ? rangeForAnchor(textMapOf(root), anchorOf(highlight))
+      : null;
+    // Cleared even with nothing to point at: a quote a regenerate rewrote
+    // away is not going to resolve on a later pass either.
+    if (range) revealRange(root, range);
+    useGraphStore.getState().clearReveal();
+  }, [reveal, onScreen, highlights, text]);
 
   // Reflowing the prose moves every rect the badges were placed from — a
   // window resize, the chat panel opening, a code block finishing its layout.
@@ -250,7 +289,7 @@ export function HighlightedResponse({
     dismiss();
   }
 
-  async function ask() {
+  async function openPanel(kind: Open["kind"]) {
     if (!pending || busy) return;
     setBusy(true);
     const highlight =
@@ -266,14 +305,19 @@ export function HighlightedResponse({
       ),
     };
     dismiss();
-    setAsking({ ...spot, id: highlight.id });
+    setOpen({ ...spot, id: highlight.id, kind });
   }
 
   // Read back out of the store so a note saved from the panel, or the row
   // arriving changed, is what the panel is holding.
-  const askingHighlight = asking
-    ? (highlights.find((h) => h.id === asking.id) ?? null)
+  const openHighlight = open
+    ? (highlights.find((h) => h.id === open.id) ?? null)
     : null;
+
+  function closePanel() {
+    setOpen(null);
+    setPending(null);
+  }
 
   return (
     <div ref={rootRef} className="relative">
@@ -296,7 +340,7 @@ export function HighlightedResponse({
           />
         ))}
 
-        {pending && !askingHighlight && (
+        {pending && !openHighlight && (
           <div
             className="absolute z-20"
             style={{ top: pending.top, left: pending.left }}
@@ -305,25 +349,28 @@ export function HighlightedResponse({
               color={color}
               busy={busy}
               existingHasNote={Boolean(pending.existing?.note)}
+              existingHasComment={Boolean(pending.existing?.comment)}
               isHighlighted={Boolean(pending.existing)}
               onHighlight={toggleHighlight}
-              onAsk={ask}
+              onAsk={() => openPanel("ask")}
+              onComment={() => openPanel("comment")}
             />
           </div>
         )}
 
-        {asking && askingHighlight && (
+        {open && openHighlight && (
           <div
             className="absolute z-30"
-            style={{ top: asking.top, left: asking.left }}
+            style={{ top: open.top, left: open.left }}
           >
-            <AskHighlightPanel
-              highlight={askingHighlight}
-              onDone={() => {
-                setAsking(null);
-                setPending(null);
-              }}
-            />
+            {open.kind === "ask" ? (
+              <AskHighlightPanel highlight={openHighlight} onDone={closePanel} />
+            ) : (
+              <CommentHighlightPanel
+                highlight={openHighlight}
+                onDone={closePanel}
+              />
+            )}
           </div>
         )}
       </div>

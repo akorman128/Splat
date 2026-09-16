@@ -158,6 +158,7 @@ export type Database = {
       highlights: {
         Row: {
           color: string
+          comment: string | null
           created_at: string
           id: string
           node_id: string
@@ -173,6 +174,7 @@ export type Database = {
         }
         Insert: {
           color?: string
+          comment?: string | null
           created_at?: string
           id?: string
           node_id: string
@@ -188,6 +190,7 @@ export type Database = {
         }
         Update: {
           color?: string
+          comment?: string | null
           created_at?: string
           id?: string
           node_id?: string

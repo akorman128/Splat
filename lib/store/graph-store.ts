@@ -35,6 +35,16 @@ type GraphState = {
   // What the composer replies to while the chat is open — the thread's leaf.
   // Falls back to the selected card, which is what the canvas replies to.
   replyTargetNodeId: string | null;
+  annotationsOpen: boolean;
+  // The card whose entries the panel scrolls to when it opens from a card.
+  // Carries a nonce for the same reason revealHighlight does: opening the
+  // panel again on the card it is already anchored to is still a request to
+  // scroll back to it.
+  annotationsAnchor: { nodeId: string; nonce: number } | null;
+  // A highlight the panel asked to be shown. Every surface drawing that card
+  // scrolls to it and the first to do so clears it; the nonce is what makes a
+  // second click on the same entry a second request.
+  revealHighlight: { id: string; nodeId: string; nonce: number } | null;
   // Deleted ids are kept so a stream still in flight cannot re-add its card.
   removedNodeIds: Record<string, true>;
 
@@ -66,6 +76,10 @@ type GraphState = {
   closeChat(): void;
   setChatAnchor(nodeId: string): void;
   setReplyTarget(nodeId: string | null): void;
+  openAnnotations(anchorNodeId?: string | null): void;
+  closeAnnotations(): void;
+  requestReveal(highlight: CardHighlight): void;
+  clearReveal(): void;
   removeNodes(ids: string[]): void;
   updateNodeGeometry(
     id: string,
@@ -129,6 +143,9 @@ export const useGraphStore = create<GraphState>((set) => ({
   chatOpen: false,
   chatAnchorNodeId: null,
   replyTargetNodeId: null,
+  annotationsOpen: false,
+  annotationsAnchor: null,
+  revealHighlight: null,
   removedNodeIds: {},
 
   init({
@@ -165,6 +182,9 @@ export const useGraphStore = create<GraphState>((set) => ({
       chatOpen: false,
       chatAnchorNodeId: null,
       replyTargetNodeId: null,
+      annotationsOpen: false,
+      annotationsAnchor: null,
+      revealHighlight: null,
       removedNodeIds: {},
     });
   },
@@ -318,6 +338,39 @@ export const useGraphStore = create<GraphState>((set) => ({
     set({ replyTargetNodeId: nodeId });
   },
 
+  // An expanded card is modal, so it comes down for the same reason it does
+  // when the chat opens: the panel behind it could not be clicked.
+  openAnnotations(anchorNodeId = null) {
+    set((state) => ({
+      annotationsOpen: true,
+      annotationsAnchor: anchorNodeId
+        ? {
+            nodeId: anchorNodeId,
+            nonce: (state.annotationsAnchor?.nonce ?? 0) + 1,
+          }
+        : null,
+      expandedNodeId: null,
+    }));
+  },
+
+  closeAnnotations() {
+    set({ annotationsOpen: false, annotationsAnchor: null });
+  },
+
+  requestReveal(highlight) {
+    set((state) => ({
+      revealHighlight: {
+        id: highlight.id,
+        nodeId: highlight.node_id,
+        nonce: (state.revealHighlight?.nonce ?? 0) + 1,
+      },
+    }));
+  },
+
+  clearReveal() {
+    set({ revealHighlight: null });
+  },
+
   removeNodes(ids) {
     set((state) => {
       const gone = new Set(ids);
@@ -377,6 +430,14 @@ export const useGraphStore = create<GraphState>((set) => ({
           state.expandedNodeId && gone.has(state.expandedNodeId)
             ? null
             : state.expandedNodeId,
+        annotationsAnchor:
+          state.annotationsAnchor && gone.has(state.annotationsAnchor.nodeId)
+            ? null
+            : state.annotationsAnchor,
+        revealHighlight:
+          state.revealHighlight && gone.has(state.revealHighlight.nodeId)
+            ? null
+            : state.revealHighlight,
       };
     });
   },

@@ -17,6 +17,7 @@ import { useComposerStore } from "@/lib/store/composer-store";
 import { useAttachmentStore } from "@/lib/store/attachment-store";
 import { useSettingsStore } from "@/lib/store/settings-store";
 import { Composer } from "@/components/composer/Composer";
+import { AnnotationsPanel } from "@/components/highlights/AnnotationsPanel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { modifierLabel } from "@/lib/shortcuts";
@@ -85,6 +86,7 @@ export function ConversationShell({
   // is drawn inside tldraw where the shell's state is out of reach.
   const chatOpen = useGraphStore((s) => s.chatOpen);
   const closeChat = useGraphStore((s) => s.closeChat);
+  const annotationsOpen = useGraphStore((s) => s.annotationsOpen);
   // The composer lives in this detached node for its whole life and the node is
   // moved between the bottom bar and the chat view. Re-targeting a portal at a
   // different container would remount the composer and drop the draft. Created
@@ -119,12 +121,20 @@ export function ConversationShell({
     else graph.openChat();
   }, [hasNodes]);
 
+  const toggleAnnotations = useCallback(() => {
+    if (!hasNodes) return;
+    const graph = useGraphStore.getState();
+    if (graph.annotationsOpen) graph.closeAnnotations();
+    else graph.openAnnotations();
+  }, [hasNodes]);
+
   useKeyboardShortcuts({
     shortcutsOpen,
     setShortcutsOpen,
     toggleComposer,
     chatOpen,
     toggleChat,
+    toggleAnnotations,
   });
 
   useLayoutEffect(() => {
@@ -166,74 +176,79 @@ export function ConversationShell({
   const showLabel = `Show the prompt box (${modifierLabel()}H)`;
 
   return (
-    <div className="relative flex-1 overflow-hidden">
-      {children}
-      {loading ? (
-        <CanvasSpinner />
-      ) : (
-        <>
-          {hasNodes && (
-            <>
-              <Canvas />
-              <CardOutline />
-            </>
-          )}
-          <div
-            data-composer-bar={hasNodes || undefined}
-            className={cn(
-              hasNodes
-                ? "pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center p-4"
-                : "flex h-full items-center justify-center p-6",
+    <div className="relative flex flex-1 overflow-hidden">
+      <div className="relative min-w-0 flex-1 overflow-hidden">
+        {children}
+        {loading ? (
+          <CanvasSpinner />
+        ) : (
+          <>
+            {hasNodes && (
+              <>
+                <Canvas />
+                <CardOutline />
+              </>
             )}
-          >
-            <div className={cn("w-full", hasNodes ? "max-w-2xl" : "max-w-xl")}>
-              {hasNodes && composerHidden && !chatOpen && (
-                <div className="flex justify-end">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    title={showLabel}
-                    onClick={toggleComposer}
-                    className="pointer-events-auto shadow-lg"
-                  >
-                    <ChevronUp />
-                    <span className="sr-only">{showLabel}</span>
-                  </Button>
-                </div>
+            <div
+              data-composer-bar={hasNodes || undefined}
+              className={cn(
+                hasNodes
+                  ? "pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center p-4"
+                  : "flex h-full items-center justify-center p-6",
               )}
+            >
               <div
-                ref={setBarHost}
-                className={cn(
-                  hasNodes && "pointer-events-auto",
-                  hasNodes && composerHidden && "hidden",
+                className={cn("w-full", hasNodes ? "max-w-2xl" : "max-w-xl")}
+              >
+                {hasNodes && composerHidden && !chatOpen && (
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      title={showLabel}
+                      onClick={toggleComposer}
+                      className="pointer-events-auto shadow-lg"
+                    >
+                      <ChevronUp />
+                      <span className="sr-only">{showLabel}</span>
+                    </Button>
+                  </div>
                 )}
-              />
+                <div
+                  ref={setBarHost}
+                  className={cn(
+                    hasNodes && "pointer-events-auto",
+                    hasNodes && composerHidden && "hidden",
+                  )}
+                />
+              </div>
             </div>
-          </div>
-        </>
-      )}
-      {hasNodes && chatOpen && (
-        <ChatView
-          onClose={closeChat}
-          composerHostRef={setChatHost}
-          composerHidden={composerHidden}
-          onShowComposer={toggleComposer}
-        />
-      )}
-      {composerNode &&
-        createPortal(
-          <Composer
-            credentials={credentials}
-            skills={skills}
-            webSearchDefault={webSearchDefault}
-            centered={!hasNodes}
-            onHide={hasNodes ? toggleComposer : undefined}
-          />,
-          composerNode,
+          </>
         )}
-      <ExpandedCardOverlay />
-      <DeleteNodeDialog />
-      <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        {hasNodes && chatOpen && (
+          <ChatView
+            onClose={closeChat}
+            composerHostRef={setChatHost}
+            composerHidden={composerHidden}
+            onShowComposer={toggleComposer}
+          />
+        )}
+        {composerNode &&
+          createPortal(
+            <Composer
+              credentials={credentials}
+              skills={skills}
+              webSearchDefault={webSearchDefault}
+              centered={!hasNodes}
+              onHide={hasNodes ? toggleComposer : undefined}
+            />,
+            composerNode,
+          )}
+        <ExpandedCardOverlay />
+        <DeleteNodeDialog />
+        <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      </div>
+      {hasNodes && annotationsOpen && <AnnotationsPanel />}
     </div>
   );
 }

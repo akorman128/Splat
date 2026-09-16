@@ -55,6 +55,9 @@ export function highlightName(color: HighlightColor): string {
   return `splat-hl-${color}`;
 }
 
+// Drawn over a quote for a moment after the panel jumps to it.
+export const FOCUS_HIGHLIGHT_NAME = "splat-hl-focus";
+
 // Keep in step with CardHighlight in lib/types.ts.
 export const HIGHLIGHT_COLUMNS =
-  "id, node_id, quote, prefix, suffix, text_offset, color, note, note_model, note_created_at, note_edited_at, created_at";
+  "id, node_id, quote, prefix, suffix, text_offset, color, note, note_model, note_created_at, note_edited_at, comment, created_at";

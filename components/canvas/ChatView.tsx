@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUp, ChevronUp, MessageSquareText, X } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronUp,
+  Highlighter,
+  MessageSquareText,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
@@ -258,6 +264,7 @@ export function ChatView({
 
   const closeLabel = `Back to the canvas (${modifierLabel()}I)`;
   const showLabel = `Show the prompt box (${modifierLabel()}H)`;
+  const annotationsLabel = `Highlights and comments (${modifierLabel()}⇧H)`;
 
   return (
     <div className="absolute inset-0 z-[45] flex flex-col bg-background animate-in fade-in-0 duration-150">
@@ -275,6 +282,20 @@ export function ChatView({
           <ArrowUp />
           Scroll to top
         </Button>
+        {!readOnly && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title={annotationsLabel}
+            onClick={() =>
+              useGraphStore.getState().openAnnotations(focusedId)
+            }
+            className="shrink-0"
+          >
+            <Highlighter />
+            <span className="sr-only">{annotationsLabel}</span>
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"

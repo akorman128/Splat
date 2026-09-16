@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ArrowUp,
   Copy,
+  Highlighter,
   MessageSquareText,
   RefreshCw,
   Square,
@@ -90,6 +91,7 @@ export function ExpandedCardOverlay() {
   const nodes = useGraphStore((s) => s.nodes);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const openChat = useGraphStore((s) => s.openChat);
+  const openAnnotations = useGraphStore((s) => s.openAnnotations);
   const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const stopStream = useStopStream();
@@ -232,6 +234,17 @@ export function ExpandedCardOverlay() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  title={`Highlights and comments (${modifierLabel()}⇧H)`}
+                  onClick={() => openAnnotations(node.id)}
+                >
+                  <Highlighter />
+                  <span className="sr-only">Highlights and comments</span>
+                </Button>
+              )}
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   title="Delete card"
                   onClick={() => {
                     setDeletingNodes([node.id]);
@@ -261,6 +274,7 @@ export function ExpandedCardOverlay() {
             {responseText && (
               <HighlightedResponse
                 nodeId={node.id}
+                surface="expanded"
                 text={responseText}
                 interactive={!readOnly && !isStreaming}
                 className="prose prose-sm max-w-none dark:prose-invert"
