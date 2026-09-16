@@ -13,6 +13,11 @@ import { HIGHLIGHT_COLUMNS, type HighlightColor } from "./palette";
 // the settings toggles write their own row.
 type Write = { data: CardHighlight | null; error: { message: string } | null };
 
+// Matches the check constraints on note and comment. Enforced in the fields
+// too, so an over-long paste is stopped by the textarea rather than coming
+// back as raw Postgres constraint text in a toast.
+export const MAX_ANNOTATION_LENGTH = 20000;
+
 async function apply(
   verb: string,
   run: () => PromiseLike<Write>,

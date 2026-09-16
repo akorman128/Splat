@@ -8,6 +8,7 @@ import { Check, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  MAX_ANNOTATION_LENGTH,
   deleteComment,
   deleteNote,
   editNote,
@@ -185,21 +186,26 @@ function Section({
   onDelete(): Promise<unknown>;
   deleteTitle: string;
 }) {
-  const [draft, setDraft] = useState(text);
+  // null means "nothing unsaved here". The draft is kept when the badge moves
+  // its edit to the other section, so writing half an answer, stepping over to
+  // the comment and coming back does not throw the half away; an explicit
+  // cancel, or a save, is what discards it.
+  const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const value = draft ?? text;
 
-  function startEdit() {
-    setDraft(text);
-    onEdit();
+  function cancel() {
+    setDraft(null);
+    onCancel();
   }
 
   async function save() {
-    const next = draft.trim();
+    const next = value.trim();
     if (!next || busy) return;
     setBusy(true);
     const saved = await onSave(next);
     setBusy(false);
-    if (saved) onCancel();
+    if (saved) cancel();
   }
 
   async function remove() {
@@ -224,13 +230,14 @@ function Section({
       ) : (
         <Textarea
           autoFocus
-          value={draft}
+          maxLength={MAX_ANNOTATION_LENGTH}
+          value={value}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();
               e.stopPropagation();
-              onCancel();
+              cancel();
             }
           }}
           className="max-h-56 min-h-24 resize-none text-xs"
@@ -246,7 +253,7 @@ function Section({
                 <button
                   type="button"
                   title="Edit"
-                  onClick={startEdit}
+                  onClick={onEdit}
                   className="rounded p-1 hover:bg-accent hover:text-foreground"
                 >
                   <Pencil className="size-3" />
@@ -270,7 +277,7 @@ function Section({
                 <button
                   type="button"
                   title="Save"
-                  disabled={busy || !draft.trim()}
+                  disabled={busy || !value.trim()}
                   onClick={save}
                   className="rounded p-1 hover:bg-accent hover:text-foreground disabled:opacity-50"
                 >
@@ -284,7 +291,7 @@ function Section({
                   type="button"
                   title="Cancel"
                   disabled={busy}
-                  onClick={onCancel}
+                  onClick={cancel}
                   className="rounded p-1 hover:bg-accent hover:text-foreground disabled:opacity-50"
                 >
                   <X className="size-3" />

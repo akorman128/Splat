@@ -83,6 +83,7 @@ export const ChatMessage = memo(function ChatMessage({
         {responseText ? (
           <HighlightedResponse
             nodeId={nodeId}
+            surface="chat"
             text={responseText}
             interactive={!readOnly && !isStreaming}
             className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto"

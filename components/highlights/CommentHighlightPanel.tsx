@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { saveComment } from "@/lib/highlights/client";
+import {
+  MAX_ANNOTATION_LENGTH,
+  saveComment,
+} from "@/lib/highlights/client";
 import { HIGHLIGHT_POPOVER_ATTR } from "@/lib/highlights/dom";
 import { QuoteBlock } from "./QuoteBlock";
 import type { CardHighlight } from "@/lib/types";
@@ -35,6 +38,7 @@ export function CommentHighlightPanel({
       <QuoteBlock color={highlight.color} quote={highlight.quote} />
       <Textarea
         autoFocus
+        maxLength={MAX_ANNOTATION_LENGTH}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {

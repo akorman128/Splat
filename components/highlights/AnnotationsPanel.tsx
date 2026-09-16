@@ -41,7 +41,7 @@ function goTo(nodeId: string, highlight?: CardHighlight) {
 export function AnnotationsPanel() {
   const nodes = useGraphStore((s) => s.nodes);
   const highlights = useGraphStore((s) => s.highlights);
-  const anchorNodeId = useGraphStore((s) => s.annotationsAnchorNodeId);
+  const anchor = useGraphStore((s) => s.annotationsAnchor);
   const closeAnnotations = useGraphStore((s) => s.closeAnnotations);
 
   // Oldest first, unlike the badges: the store keeps a card's highlights in
@@ -66,16 +66,18 @@ export function AnnotationsPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || !anchorNodeId) return;
+    if (!scroller || !anchor) return;
     const target = scroller.querySelector(
-      `[data-annotations-card="${anchorNodeId}"]`,
+      `[data-annotations-card="${anchor.nodeId}"]`,
     );
+    // A card with nothing noted on it has no section to scroll to; the list is
+    // left where the reader had it rather than jumped somewhere arbitrary.
     if (!target) return;
     const box = scroller.getBoundingClientRect();
     scroller.scrollTo({
       top: scroller.scrollTop + target.getBoundingClientRect().top - box.top - 8,
     });
-  }, [anchorNodeId]);
+  }, [anchor]);
 
   const hideLabel = `Hide highlights and comments (${modifierLabel()}⇧H)`;
 

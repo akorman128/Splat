@@ -37,7 +37,10 @@ type GraphState = {
   replyTargetNodeId: string | null;
   annotationsOpen: boolean;
   // The card whose entries the panel scrolls to when it opens from a card.
-  annotationsAnchorNodeId: string | null;
+  // Carries a nonce for the same reason revealHighlight does: opening the
+  // panel again on the card it is already anchored to is still a request to
+  // scroll back to it.
+  annotationsAnchor: { nodeId: string; nonce: number } | null;
   // A highlight the panel asked to be shown. Every surface drawing that card
   // scrolls to it and the first to do so clears it; the nonce is what makes a
   // second click on the same entry a second request.
@@ -141,7 +144,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   chatAnchorNodeId: null,
   replyTargetNodeId: null,
   annotationsOpen: false,
-  annotationsAnchorNodeId: null,
+  annotationsAnchor: null,
   revealHighlight: null,
   removedNodeIds: {},
 
@@ -180,7 +183,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       chatAnchorNodeId: null,
       replyTargetNodeId: null,
       annotationsOpen: false,
-      annotationsAnchorNodeId: null,
+      annotationsAnchor: null,
       revealHighlight: null,
       removedNodeIds: {},
     });
@@ -338,15 +341,20 @@ export const useGraphStore = create<GraphState>((set) => ({
   // An expanded card is modal, so it comes down for the same reason it does
   // when the chat opens: the panel behind it could not be clicked.
   openAnnotations(anchorNodeId = null) {
-    set({
+    set((state) => ({
       annotationsOpen: true,
-      annotationsAnchorNodeId: anchorNodeId,
+      annotationsAnchor: anchorNodeId
+        ? {
+            nodeId: anchorNodeId,
+            nonce: (state.annotationsAnchor?.nonce ?? 0) + 1,
+          }
+        : null,
       expandedNodeId: null,
-    });
+    }));
   },
 
   closeAnnotations() {
-    set({ annotationsOpen: false, annotationsAnchorNodeId: null });
+    set({ annotationsOpen: false, annotationsAnchor: null });
   },
 
   requestReveal(highlight) {
@@ -422,11 +430,10 @@ export const useGraphStore = create<GraphState>((set) => ({
           state.expandedNodeId && gone.has(state.expandedNodeId)
             ? null
             : state.expandedNodeId,
-        annotationsAnchorNodeId:
-          state.annotationsAnchorNodeId &&
-          gone.has(state.annotationsAnchorNodeId)
+        annotationsAnchor:
+          state.annotationsAnchor && gone.has(state.annotationsAnchor.nodeId)
             ? null
-            : state.annotationsAnchorNodeId,
+            : state.annotationsAnchor,
         revealHighlight:
           state.revealHighlight && gone.has(state.revealHighlight.nodeId)
             ? null

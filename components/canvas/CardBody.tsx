@@ -211,6 +211,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
           {responseText ? (
             <HighlightedResponse
               nodeId={nodeId}
+              surface="canvas"
               text={responseText}
               className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-x-auto prose-pre:text-xs"
             />

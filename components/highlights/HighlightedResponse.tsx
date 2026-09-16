@@ -38,6 +38,11 @@ const NO_BADGES: Badge[] = [];
 const TOOLBAR_WIDTH = 330;
 const PANEL_WIDTH = 320;
 
+// The same card is drawn on more than one of these at once — the canvas card
+// stays mounted under the chat overlay and under an expanded card — so a jump
+// to a passage has to name which of them the reader is actually looking at.
+type Surface = "canvas" | "chat" | "expanded";
+
 type Spot = { top: number; left: number };
 
 type Badge = Spot & { highlight: CardHighlight };
@@ -96,13 +101,22 @@ export function HighlightedResponse({
   text,
   className,
   interactive = false,
+  surface = "canvas",
 }: {
   nodeId: string;
   text: string;
   className?: string;
   interactive?: boolean;
+  surface?: Surface;
 }) {
   const highlights = useGraphStore((s) => s.highlights[nodeId] ?? NONE);
+  const onScreen = useGraphStore((s) =>
+    s.chatOpen
+      ? surface === "chat"
+      : s.expandedNodeId === nodeId
+        ? surface === "expanded"
+        : surface === "canvas",
+  );
   const reveal = useGraphStore((s) =>
     s.revealHighlight?.nodeId === nodeId ? s.revealHighlight : null,
   );
@@ -170,19 +184,23 @@ export function HighlightedResponse({
 
   useEffect(() => () => clearPaintedRanges(owner), [owner]);
 
-  // Left set until a surface drawing the card has handled it: the card may be
-  // culled off the canvas when the request is made, and mount only once the
-  // camera has arrived.
+  // Only the copy the reader is looking at: every surface drawing this card
+  // runs this effect on the same commit, and clearing the request does not
+  // stop the others in that pass — a hidden canvas card would scroll its own
+  // box out from under them. Left set until that surface has had its turn,
+  // because a card culled off the canvas mounts only once the camera arrives.
   useEffect(() => {
     const root = rootRef.current;
-    if (!reveal || !root) return;
+    if (!reveal || !root || !onScreen) return;
     const highlight = highlights.find((h) => h.id === reveal.id);
     const range = highlight
       ? rangeForAnchor(textMapOf(root), anchorOf(highlight))
       : null;
+    // Cleared even with nothing to point at: a quote a regenerate rewrote
+    // away is not going to resolve on a later pass either.
     if (range) revealRange(root, range);
     useGraphStore.getState().clearReveal();
-  }, [reveal, highlights, text]);
+  }, [reveal, onScreen, highlights, text]);
 
   // Reflowing the prose moves every rect the badges were placed from — a
   // window resize, the chat panel opening, a code block finishing its layout.

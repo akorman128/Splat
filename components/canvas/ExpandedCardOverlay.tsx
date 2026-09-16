@@ -274,6 +274,7 @@ export function ExpandedCardOverlay() {
             {responseText && (
               <HighlightedResponse
                 nodeId={node.id}
+                surface="expanded"
                 text={responseText}
                 interactive={!readOnly && !isStreaming}
                 className="prose prose-sm max-w-none dark:prose-invert"
