@@ -5,7 +5,6 @@ import { Highlighter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/lib/store/graph-store";
-import { outlineOrder } from "@/lib/graph/outline";
 import { threadOf } from "@/lib/graph/thread";
 import { modifierLabel } from "@/lib/shortcuts";
 import { HIGHLIGHT_BORDERS, asHighlightColor } from "@/lib/highlights/palette";
@@ -45,11 +44,21 @@ export function AnnotationsPanel() {
   const anchorNodeId = useGraphStore((s) => s.annotationsAnchorNodeId);
   const closeAnnotations = useGraphStore((s) => s.closeAnnotations);
 
+  // Oldest first, unlike the badges: the store keeps a card's highlights in
+  // reading order, but an overview is read as a record of what was noted.
   const groups = useMemo(
     () =>
-      outlineOrder(Object.values(nodes))
-        .map(({ id }) => ({ id, entries: highlights[id] ?? [] }))
-        .filter((group) => group.entries.length > 0),
+      Object.entries(highlights)
+        .filter(([id, entries]) => entries.length > 0 && nodes[id])
+        .map(([id, entries]) => ({
+          id,
+          entries: [...entries].sort((a, b) =>
+            a.created_at.localeCompare(b.created_at),
+          ),
+        }))
+        .sort((a, b) =>
+          a.entries[0].created_at.localeCompare(b.entries[0].created_at),
+        ),
     [nodes, highlights],
   );
   const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
