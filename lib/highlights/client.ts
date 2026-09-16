@@ -100,6 +100,33 @@ export function deleteNote(highlightId: string): Promise<CardHighlight | null> {
   );
 }
 
+export function saveComment(
+  highlightId: string,
+  comment: string,
+): Promise<CardHighlight | null> {
+  return apply("save that comment", () =>
+    createClient()
+      .from("highlights")
+      .update({ comment })
+      .eq("id", highlightId)
+      .select(HIGHLIGHT_COLUMNS)
+      .single(),
+  );
+}
+
+export function deleteComment(
+  highlightId: string,
+): Promise<CardHighlight | null> {
+  return apply("delete that comment", () =>
+    createClient()
+      .from("highlights")
+      .update({ comment: null })
+      .eq("id", highlightId)
+      .select(HIGHLIGHT_COLUMNS)
+      .single(),
+  );
+}
+
 export async function deleteHighlight(
   nodeId: string,
   highlightId: string,

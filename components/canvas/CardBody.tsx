@@ -3,6 +3,7 @@
 import { memo } from "react";
 import {
   Copy,
+  Highlighter,
   Loader2,
   Maximize2,
   MessageSquareText,
@@ -46,6 +47,7 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
   const setHoveredNode = useGraphStore((s) => s.setHoveredNode);
   const setDeletingNodes = useGraphStore((s) => s.setDeletingNodes);
   const openChat = useGraphStore((s) => s.openChat);
+  const openAnnotations = useGraphStore((s) => s.openAnnotations);
   const readOnly = useGraphStore((s) => s.readOnly);
   const setRegenerateNode = useComposerStore((s) => s.setRegenerateNode);
   const isRegenerateTarget = useComposerStore(
@@ -157,6 +159,17 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
                 onClick={() => openChat(nodeId)}
               >
                 <MessageSquareText className="size-3.5" />
+              </button>
+            )}
+            {!readOnly && (
+              <button
+                type="button"
+                title={`Highlights and comments (${modifierLabel()}⇧H)`}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                onPointerDown={stop}
+                onClick={() => openAnnotations(nodeId)}
+              >
+                <Highlighter className="size-3.5" />
               </button>
             )}
           </div>

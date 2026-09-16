@@ -34,12 +34,14 @@ export function useKeyboardShortcuts({
   toggleComposer,
   chatOpen,
   toggleChat,
+  toggleAnnotations,
 }: {
   shortcutsOpen: boolean;
   setShortcutsOpen(open: boolean): void;
   toggleComposer(): void;
   chatOpen: boolean;
   toggleChat(): void;
+  toggleAnnotations(): void;
 }) {
   useEffect(() => {
     function handle(event: KeyboardEvent) {
@@ -54,8 +56,14 @@ export function useKeyboardShortcuts({
       if (event.metaKey || event.ctrlKey) {
         const key = event.key.toLowerCase();
 
-        // Copy is the only shifted card shortcut; the sidebar owns the rest.
+        // Copy and the highlights panel are the only shifted shortcuts here;
+        // the sidebar owns the rest.
         if (event.shiftKey) {
+          if (key === "h") {
+            claim();
+            toggleAnnotations();
+            return;
+          }
           if (key !== "c") return;
           const target = cardInFocus(graph);
           if (!target) return;
@@ -129,5 +137,12 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handle, { capture: true });
     return () => window.removeEventListener("keydown", handle, { capture: true });
-  }, [shortcutsOpen, setShortcutsOpen, toggleComposer, chatOpen, toggleChat]);
+  }, [
+    shortcutsOpen,
+    setShortcutsOpen,
+    toggleComposer,
+    chatOpen,
+    toggleChat,
+    toggleAnnotations,
+  ]);
 }

@@ -1,27 +1,31 @@
 "use client";
 
-import { Highlighter, Sparkles } from "lucide-react";
+import { Highlighter, MessageSquarePlus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HIGHLIGHT_SWATCHES, type HighlightColor } from "@/lib/highlights/palette";
 
-// Two actions on a quote, and the same bar is what takes one back off again:
-// selecting inside a highlight that is already there offers to remove it, and
-// asking from inside one hangs the answer on the quote that exists rather than
-// laying a second one over it.
+// Three actions on a quote, and the same bar is what takes one back off
+// again: selecting inside a highlight that is already there offers to remove
+// it, and asking or commenting from inside one hangs the words on the quote
+// that exists rather than laying a second one over it.
 export function SelectionActions({
   color,
   busy,
   isHighlighted,
   existingHasNote,
+  existingHasComment,
   onHighlight,
   onAsk,
+  onComment,
 }: {
   color: HighlightColor;
   busy: boolean;
   isHighlighted: boolean;
   existingHasNote: boolean;
+  existingHasComment: boolean;
   onHighlight(): void;
   onAsk(): void;
+  onComment(): void;
 }) {
   return (
     <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border bg-popover p-1 shadow-lg">
@@ -30,8 +34,8 @@ export function SelectionActions({
         disabled={busy}
         onClick={onHighlight}
         title={
-          existingHasNote
-            ? "Remove this highlight and the response saved against it"
+          existingHasNote || existingHasComment
+            ? "Remove this highlight and everything saved against it"
             : undefined
         }
         className={cn(
@@ -59,6 +63,16 @@ export function SelectionActions({
       >
         <Sparkles className="size-3.5 text-muted-foreground" />
         Ask model
+      </button>
+      <span className="h-4 w-px bg-border" />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onComment}
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+      >
+        <MessageSquarePlus className="size-3.5 text-muted-foreground" />
+        {existingHasComment ? "Edit comment" : "Comment"}
       </button>
     </div>
   );
