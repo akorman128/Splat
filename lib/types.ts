@@ -17,8 +17,9 @@ export type HighlightRow = Database["public"]["Tables"]["highlights"]["Row"];
 // Matches the column default.
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
 
-// Matches the column's check constraint.
+// Each matches its column's check constraint.
 export const MAX_SKILL_NAME_LENGTH = 60;
+export const MAX_FOLDER_NAME_LENGTH = 60;
 
 // The share view is served nodes without user_id, so nothing on the canvas may
 // depend on that column.
@@ -58,6 +59,11 @@ export type SharedConversation = {
 
 // Instructions are left out so they don't ride along with every page load.
 export type SkillSummary = {
+  id: string;
+  name: string;
+};
+
+export type FolderSummary = {
   id: string;
   name: string;
 };
