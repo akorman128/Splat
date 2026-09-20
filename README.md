@@ -61,6 +61,8 @@ you're in.
 - **Use a skill** — a reusable block of instructions, managed in the sidebar — by
   typing `/` in the prompt box. It's sent as system instructions, not as part of
   your prompt.
+- **File canvases into folders** from the sidebar: make one with the folder
+  button next to *Canvases*, then pick *Move to* from a canvas's ⋯ menu.
 - **Share** a conversation from its ⋯ menu. The link is read-only, and *Stop
   sharing* revokes it.
 
