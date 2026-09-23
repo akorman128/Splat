@@ -105,8 +105,9 @@ export function ShareDialog({
             <span className="font-medium text-foreground">
               {conversation?.title}
             </span>{" "}
-            — every card, its answer, and how the branches connect. They cannot
-            edit it, add to it, or see anything else in your account.
+            — every card, its answer, how the branches connect, and your
+            highlights and comments. They cannot edit it, add to it, or see
+            anything else in your account.
           </DialogDescription>
         </DialogHeader>
 

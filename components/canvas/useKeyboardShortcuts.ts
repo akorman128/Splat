@@ -38,7 +38,8 @@ export function useKeyboardShortcuts({
 }: {
   shortcutsOpen: boolean;
   setShortcutsOpen(open: boolean): void;
-  toggleComposer(): void;
+  // Absent on a shared canvas, which has no prompt box to hide.
+  toggleComposer?(): void;
   chatOpen: boolean;
   toggleChat(): void;
   toggleAnnotations(): void;
@@ -83,11 +84,13 @@ export function useKeyboardShortcuts({
           return;
         }
         if (key === "h") {
+          if (!toggleComposer) return;
           claim();
           toggleComposer();
           return;
         }
         if (key !== "o" && key !== "r") return;
+        if (key === "r" && graph.readOnly) return;
         // The chat view already is the opened card, and it regenerates the
         // message holding focus rather than whatever the canvas has selected.
         if (chatOpen) {

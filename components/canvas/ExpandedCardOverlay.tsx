@@ -219,28 +219,24 @@ export function ExpandedCardOverlay() {
                 <Copy />
                 <span className="sr-only">Copy card</span>
               </Button>
-              {!readOnly && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title={`Open this thread as a chat (${modifierLabel()}I)`}
-                  onClick={() => openChat(node.id)}
-                >
-                  <MessageSquareText />
-                  <span className="sr-only">Open this thread as a chat</span>
-                </Button>
-              )}
-              {!readOnly && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title={`Highlights and comments (${modifierLabel()}⇧H)`}
-                  onClick={() => openAnnotations(node.id)}
-                >
-                  <Highlighter />
-                  <span className="sr-only">Highlights and comments</span>
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title={`Open this thread as a chat (${modifierLabel()}I)`}
+                onClick={() => openChat(node.id)}
+              >
+                <MessageSquareText />
+                <span className="sr-only">Open this thread as a chat</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title={`Highlights and comments (${modifierLabel()}⇧H)`}
+                onClick={() => openAnnotations(node.id)}
+              >
+                <Highlighter />
+                <span className="sr-only">Highlights and comments</span>
+              </Button>
               {!readOnly && (
                 <Button
                   variant="ghost"

@@ -3,24 +3,28 @@ export const MOD = "mod" as const;
 export const SHORTCUTS_HINT =
   "Card shortcuts act on the card under the pointer, or the selected one. In the chat view the arrows move between messages while the prompt box is empty.";
 
-export type Shortcut = { keys: string[]; label: string };
+export type Shortcut = { keys: string[]; label: string; ownerOnly?: true };
 export type ShortcutGroup = { title: string; shortcuts: Shortcut[] };
 
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Starting something new",
     shortcuts: [
-      { keys: [MOD, "Shift", "N"], label: "Start a new conversation" },
-      { keys: [MOD, "Shift", "S"], label: "Write a new skill" },
+      {
+        keys: [MOD, "Shift", "N"],
+        label: "Start a new conversation",
+        ownerOnly: true,
+      },
+      { keys: [MOD, "Shift", "S"], label: "Write a new skill", ownerOnly: true },
     ],
   },
   {
     title: "Cards",
     shortcuts: [
       { keys: [MOD, "O"], label: "Open the hovered card" },
-      { keys: [MOD, "R"], label: "Regenerate the hovered card" },
+      { keys: [MOD, "R"], label: "Regenerate the hovered card", ownerOnly: true },
       { keys: [MOD, "Shift", "C"], label: "Copy the hovered card" },
-      { keys: ["Delete"], label: "Delete the selected cards" },
+      { keys: ["Delete"], label: "Delete the selected cards", ownerOnly: true },
       { keys: ["Esc"], label: "Close the open card" },
     ],
   },
@@ -56,21 +60,31 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Composer",
     shortcuts: [
-      { keys: ["Enter"], label: "Send the prompt" },
-      { keys: ["Shift", "Enter"], label: "Start a new line" },
-      { keys: ["Esc"], label: "Cancel a staged regeneration" },
-      { keys: [MOD, "H"], label: "Hide or show the prompt box" },
+      { keys: ["Enter"], label: "Send the prompt", ownerOnly: true },
+      { keys: ["Shift", "Enter"], label: "Start a new line", ownerOnly: true },
+      { keys: ["Esc"], label: "Cancel a staged regeneration", ownerOnly: true },
+      { keys: [MOD, "H"], label: "Hide or show the prompt box", ownerOnly: true },
     ],
   },
   {
     title: "Sidebar",
-    shortcuts: [{ keys: [MOD, "B"], label: "Hide or show the sidebar" }],
+    shortcuts: [
+      { keys: [MOD, "B"], label: "Hide or show the sidebar", ownerOnly: true },
+    ],
   },
   {
     title: "Help",
     shortcuts: [{ keys: [MOD, "/"], label: "Show the shortcut list" }],
   },
 ];
+
+export function shortcutGroupsFor(readOnly: boolean): ShortcutGroup[] {
+  if (!readOnly) return SHORTCUT_GROUPS;
+  return SHORTCUT_GROUPS.map((group) => ({
+    ...group,
+    shortcuts: group.shortcuts.filter((shortcut) => !shortcut.ownerOnly),
+  })).filter((group) => group.shortcuts.length > 0);
+}
 
 export function modifierLabelFor(platform: string): string {
   return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";

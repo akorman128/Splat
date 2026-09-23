@@ -1,13 +1,19 @@
 "use client";
 
-import { MOD, SHORTCUT_GROUPS, modifierLabel } from "@/lib/shortcuts";
+import { MOD, modifierLabel, shortcutGroupsFor } from "@/lib/shortcuts";
 
-export function ShortcutList({ modifier }: { modifier?: string }) {
+export function ShortcutList({
+  modifier,
+  readOnly = false,
+}: {
+  modifier?: string;
+  readOnly?: boolean;
+}) {
   const mod = modifier ?? modifierLabel();
 
   return (
     <div className="space-y-6">
-      {SHORTCUT_GROUPS.map((group) => (
+      {shortcutGroupsFor(readOnly).map((group) => (
         <section key={group.title} className="space-y-2">
           <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             {group.title}

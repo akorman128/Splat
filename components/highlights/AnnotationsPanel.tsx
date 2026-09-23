@@ -43,6 +43,7 @@ export function AnnotationsPanel() {
   const highlights = useGraphStore((s) => s.highlights);
   const anchor = useGraphStore((s) => s.annotationsAnchor);
   const closeAnnotations = useGraphStore((s) => s.closeAnnotations);
+  const readOnly = useGraphStore((s) => s.readOnly);
 
   // Oldest first, unlike the badges: the store keeps a card's highlights in
   // reading order, but an overview is read as a record of what was noted.
@@ -105,8 +106,9 @@ export function AnnotationsPanel() {
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-2">
         {groups.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-            Nothing here yet. Open a card and select some text to highlight it,
-            ask the model about it, or leave a comment.
+            {readOnly
+              ? "Nothing on this canvas has been highlighted or commented on."
+              : "Nothing here yet. Open a card and select some text to highlight it, ask the model about it, or leave a comment."}
           </p>
         ) : (
           <div className="space-y-4">

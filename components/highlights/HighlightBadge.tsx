@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Popover } from "@base-ui/react/popover";
 import { Check, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useGraphStore } from "@/lib/store/graph-store";
 import { Textarea } from "@/components/ui/textarea";
 import {
   MAX_ANNOTATION_LENGTH,
@@ -51,6 +52,7 @@ export function HighlightBadge({
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [editing, setEditing] = useState<Part | null>(null);
+  const readOnly = useGraphStore((s) => s.readOnly);
 
   const color = asHighlightColor(highlight.color);
 
@@ -143,7 +145,7 @@ export function HighlightBadge({
             {highlight.comment && (
               <Section
                 text={highlight.comment}
-                label="Your comment"
+                label={readOnly ? "Comment" : "Your comment"}
                 editable={editable}
                 editing={editing === "comment"}
                 onEdit={() => {

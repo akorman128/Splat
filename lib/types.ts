@@ -55,6 +55,7 @@ export type SharedConversation = {
   edges: ContextEdgeRow[];
   suggestions: SuggestionRow[];
   attachments: CardAttachment[];
+  highlights: CardHighlight[];
 };
 
 // Instructions are left out so they don't ride along with every page load.

@@ -150,28 +150,24 @@ export const CardBody = memo(function CardBody({ nodeId }: { nodeId: string }) {
             >
               <Maximize2 className="size-3.5" />
             </button>
-            {!readOnly && (
-              <button
-                type="button"
-                title={`Open this thread as a chat (${modifierLabel()}I)`}
-                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                onPointerDown={stop}
-                onClick={() => openChat(nodeId)}
-              >
-                <MessageSquareText className="size-3.5" />
-              </button>
-            )}
-            {!readOnly && (
-              <button
-                type="button"
-                title={`Highlights and comments (${modifierLabel()}⇧H)`}
-                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                onPointerDown={stop}
-                onClick={() => openAnnotations(nodeId)}
-              >
-                <Highlighter className="size-3.5" />
-              </button>
-            )}
+            <button
+              type="button"
+              title={`Open this thread as a chat (${modifierLabel()}I)`}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onPointerDown={stop}
+              onClick={() => openChat(nodeId)}
+            >
+              <MessageSquareText className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              title={`Highlights and comments (${modifierLabel()}⇧H)`}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onPointerDown={stop}
+              onClick={() => openAnnotations(nodeId)}
+            >
+              <Highlighter className="size-3.5" />
+            </button>
           </div>
         </div>
 
