@@ -63,13 +63,14 @@ function fieldOwnsArrows(target: EventTarget | null): boolean {
 export function ChatView({
   onClose,
   composerHostRef,
-  composerHidden,
+  composerHidden = false,
   onShowComposer,
 }: {
   onClose(): void;
-  composerHostRef(el: HTMLDivElement | null): void;
-  composerHidden: boolean;
-  onShowComposer(): void;
+  // Left off on a shared canvas, which has nothing to reply with.
+  composerHostRef?(el: HTMLDivElement | null): void;
+  composerHidden?: boolean;
+  onShowComposer?(): void;
 }) {
   const nodes = useGraphStore((s) => s.nodes);
   const anchorNodeId = useGraphStore((s) => s.chatAnchorNodeId);
@@ -170,7 +171,7 @@ export function ChatView({
       // ⌘R acts on the message holding focus. The canvas shortcut cannot: it
       // reads the selection, which no longer follows the thread.
       if (event.metaKey || event.ctrlKey) {
-        if (event.key.toLowerCase() !== "r" || !focusedId) return;
+        if (event.key.toLowerCase() !== "r" || !focusedId || readOnly) return;
         const target = useGraphStore.getState().nodes[focusedId];
         if (!target || target.status === "streaming") return;
         event.preventDefault();
@@ -207,7 +208,7 @@ export function ChatView({
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [onClose, thread, focusedId, branches, switchBranch]);
+  }, [onClose, thread, focusedId, branches, switchBranch, readOnly]);
 
   useEffect(() => {
     if (!focusRequest?.scroll) return;
@@ -282,20 +283,16 @@ export function ChatView({
           <ArrowUp />
           Scroll to top
         </Button>
-        {!readOnly && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title={annotationsLabel}
-            onClick={() =>
-              useGraphStore.getState().openAnnotations(focusedId)
-            }
-            className="shrink-0"
-          >
-            <Highlighter />
-            <span className="sr-only">{annotationsLabel}</span>
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={annotationsLabel}
+          onClick={() => useGraphStore.getState().openAnnotations(focusedId)}
+          className="shrink-0"
+        >
+          <Highlighter />
+          <span className="sr-only">{annotationsLabel}</span>
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"

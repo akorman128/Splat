@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Eye } from "lucide-react";
 import { useGraphStore } from "@/lib/store/graph-store";
+import { AnnotationsPanel } from "@/components/highlights/AnnotationsPanel";
 import { Button } from "@/components/ui/button";
 import { CanvasSpinner } from "./CanvasSpinner";
+import { CardOutline } from "./CardOutline";
+import { ChatView } from "./ChatView";
 import { ExpandedCardOverlay } from "./ExpandedCardOverlay";
+import { ShortcutsSheet } from "./ShortcutsSheet";
+import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import type { SharedConversation } from "@/lib/types";
 
 const Canvas = dynamic(() => import("./Canvas"), {
@@ -16,10 +21,16 @@ const Canvas = dynamic(() => import("./Canvas"), {
 });
 
 export function SharedConversationView({ shared }: { shared: SharedConversation }) {
-  const { conversation, nodes, edges, suggestions, attachments } = shared;
+  const { conversation, nodes, edges, suggestions, attachments, highlights } =
+    shared;
+  const hasNodes = nodes.length > 0;
   const initialized = useGraphStore(
     (s) => s.conversationId === conversation.id && s.readOnly,
   );
+  const chatOpen = useGraphStore((s) => s.chatOpen);
+  const closeChat = useGraphStore((s) => s.closeChat);
+  const annotationsOpen = useGraphStore((s) => s.annotationsOpen);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   useEffect(() => {
     useGraphStore.getState().init({
@@ -28,10 +39,33 @@ export function SharedConversationView({ shared }: { shared: SharedConversation 
       edges,
       suggestions,
       attachments: attachments ?? [],
+      highlights: highlights ?? [],
       readOnly: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
+
+  const toggleChat = useCallback(() => {
+    if (!hasNodes) return;
+    const graph = useGraphStore.getState();
+    if (graph.chatOpen) graph.closeChat();
+    else graph.openChat();
+  }, [hasNodes]);
+
+  const toggleAnnotations = useCallback(() => {
+    if (!hasNodes) return;
+    const graph = useGraphStore.getState();
+    if (graph.annotationsOpen) graph.closeAnnotations();
+    else graph.openAnnotations();
+  }, [hasNodes]);
+
+  useKeyboardShortcuts({
+    shortcutsOpen,
+    setShortcutsOpen,
+    chatOpen,
+    toggleChat,
+    toggleAnnotations,
+  });
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -55,17 +89,29 @@ export function SharedConversationView({ shared }: { shared: SharedConversation 
           Try Splat
         </Button>
       </header>
-      <div className="relative flex-1 overflow-hidden">
-        {!initialized ? <CanvasSpinner /> : nodes.length > 0 ? (
-          <>
-            <Canvas />
-            <ExpandedCardOverlay />
-          </>
-        ) : (
-          <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-            This conversation has no cards yet.
-          </div>
-        )}
+      <div className="relative flex flex-1 overflow-hidden">
+        <div className="relative min-w-0 flex-1 overflow-hidden">
+          {!initialized ? (
+            <CanvasSpinner />
+          ) : hasNodes ? (
+            <>
+              <Canvas />
+              <CardOutline />
+              {chatOpen && <ChatView onClose={closeChat} />}
+              <ExpandedCardOverlay />
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+              This conversation has no cards yet.
+            </div>
+          )}
+          <ShortcutsSheet
+            open={shortcutsOpen}
+            onOpenChange={setShortcutsOpen}
+            readOnly
+          />
+        </div>
+        {initialized && hasNodes && annotationsOpen && <AnnotationsPanel />}
       </div>
     </div>
   );

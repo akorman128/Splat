@@ -54,9 +54,7 @@ type GraphState = {
     edges: ContextEdgeRow[];
     suggestions: SuggestionRow[];
     attachments: CardAttachment[];
-    // A shared canvas is served without them: they are the owner's notes, not
-    // part of the conversation.
-    highlights?: CardHighlight[];
+    highlights: CardHighlight[];
     readOnly?: boolean;
   }): void;
   adoptConversation(id: string): void;
@@ -154,7 +152,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     edges,
     suggestions,
     attachments,
-    highlights = [],
+    highlights,
     readOnly = false,
   }) {
     const suggestionMap: Record<string, SuggestionRow[]> = {};

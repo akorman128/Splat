@@ -11,9 +11,11 @@ import { ShortcutList } from "@/components/shortcut-list";
 export function ShortcutsSheet({
   open,
   onOpenChange,
+  readOnly = false,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
+  readOnly?: boolean;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -22,7 +24,7 @@ export function ShortcutsSheet({
           <SheetTitle>Keyboard shortcuts</SheetTitle>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <ShortcutList />
+          <ShortcutList readOnly={readOnly} />
         </div>
       </SheetContent>
     </Sheet>
