@@ -56,6 +56,7 @@ import {
   ChevronRight,
   ChevronsUpDown,
   FolderPlus,
+  Headphones,
   LogOut,
   Plus,
   Settings,
@@ -299,6 +300,22 @@ export function AppSidebar({
         </Button>
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname.startsWith("/meetings")}
+                  render={<Link href="/meetings" />}
+                >
+                  <Headphones className="size-4" />
+                  Meetings
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <Collapsible
           open={!collapsedSections.has(SKILLS_SECTION)}
           onOpenChange={(open) => setSectionCollapsed(SKILLS_SECTION, !open)}
