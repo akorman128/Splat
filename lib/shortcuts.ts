@@ -67,6 +67,16 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Meetings",
+    shortcuts: [
+      { keys: ["Space"], label: "Play or pause the meeting" },
+      { keys: ["←"], label: "Go back a section" },
+      { keys: ["→"], label: "Go forward a section" },
+      { keys: [">"], label: "Speed up playback" },
+      { keys: ["<"], label: "Slow down playback" },
+    ],
+  },
+  {
     title: "Sidebar",
     shortcuts: [
       { keys: [MOD, "B"], label: "Hide or show the sidebar", ownerOnly: true },

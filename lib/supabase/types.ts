@@ -187,6 +187,30 @@ export type Database = {
         }
         Relationships: []
       }
+      granola_connections: {
+        Row: {
+          created_at: string
+          email: string | null
+          encrypted_session: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          encrypted_session: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          encrypted_session?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       highlights: {
         Row: {
           color: string
@@ -245,6 +269,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      meetings: {
+        Row: {
+          created_at: string
+          granola_meeting_id: string
+          id: string
+          met_at: string
+          title: string
+          transcript: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granola_meeting_id: string
+          id?: string
+          met_at: string
+          title: string
+          transcript: Json
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          granola_meeting_id?: string
+          id?: string
+          met_at?: string
+          title?: string
+          transcript?: Json
+          user_id?: string
+        }
+        Relationships: []
       }
       node_attachments: {
         Row: {

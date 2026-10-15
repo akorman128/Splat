@@ -77,7 +77,7 @@ async function annotationWebSearch(
   return webSearchParams(entry ? entry.supportsWebSearch : true);
 }
 
-function attributionHeaders(): Record<string, string> {
+export function attributionHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   const siteUrl = process.env.OPENROUTER_SITE_URL;
   const siteName = process.env.OPENROUTER_SITE_NAME ?? "Splat";

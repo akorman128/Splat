@@ -63,6 +63,10 @@ you're in.
   your prompt.
 - **File canvases into folders** from the sidebar: make one with the folder
   button next to *Canvases*, then pick *Move to* from a canvas's ⋯ menu.
+- **Listen back to a meeting** from *Meetings* in the sidebar. Sign in with
+  Granola, import a transcript, and it's read aloud through your OpenRouter key
+  with a different voice per speaker. Click any passage to play from there;
+  Space pauses, ← and → step back and forward a section.
 - **Share** a conversation from its ⋯ menu. The link is read-only, and *Stop
   sharing* revokes it.
 
