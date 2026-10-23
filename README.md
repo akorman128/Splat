@@ -67,6 +67,9 @@ you're in.
   Granola, import a transcript, and it's read aloud through your OpenRouter key
   with a different voice per speaker. Click any passage to play from there;
   Space pauses, ← and → step back and forward a section.
+- **Start a canvas from a meeting** by picking *Attach a Granola transcript*
+  from the paperclip on a new canvas. The transcript goes in as a file, ready
+  to ask about.
 - **Share** a conversation from its ⋯ menu. The link is read-only, and *Stop
   sharing* revokes it.
 
