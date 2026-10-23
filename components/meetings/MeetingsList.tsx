@@ -22,7 +22,7 @@ export type ImportedMeeting = {
   granola_meeting_id: string;
 };
 
-type GranolaMeeting = {
+export type GranolaMeeting = {
   id: string;
   title: string;
   meeting_at: string;

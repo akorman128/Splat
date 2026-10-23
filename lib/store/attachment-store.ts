@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import {
   UploadAbortedError,
+  attachTranscript,
   createConversation,
   deleteAttachment,
   downscaleImage,
@@ -28,7 +29,9 @@ export type DraftAttachment = {
   // The library row this draft was copied from, null when it came off the disk.
   sourceId: string | null;
   status: "uploading" | "ready" | "error";
-  progress: number;
+  // Null while there is no percentage to count up to: a reused file is copied
+  // inside the bucket, and a transcript is written by the server.
+  progress: number | null;
   error: string | null;
   attachment: CardAttachment | null;
 };
@@ -37,6 +40,7 @@ type AttachmentState = {
   drafts: DraftAttachment[];
   enqueue(files: File[], options?: { synthesiseNames?: boolean }): void;
   reuse(items: LibraryAttachment[]): void;
+  transcript(meeting: { granolaMeetingId: string; title: string }): void;
   remove(localId: string): void;
   released(sentAttachmentIds: string[]): void;
   reset(): void;
@@ -169,7 +173,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
           filename: item.filename,
           sourceId: item.id,
           status: "uploading" as const,
-          progress: 0,
+          progress: null,
           error: null,
           attachment: null,
         })),
@@ -177,6 +181,35 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => ({
     }));
 
     void copy(entries);
+  },
+
+  transcript(meeting) {
+    if (useComposerStore.getState().regenerateNodeId) {
+      toast.error("Finish or cancel the regeneration before attaching a file.");
+      return;
+    }
+    if (get().drafts.length >= MAX_ATTACHMENTS_PER_TURN) {
+      toast.error(`You can attach up to ${MAX_ATTACHMENTS_PER_TURN} files.`);
+      return;
+    }
+
+    const id = localId();
+    set((state) => ({
+      drafts: [
+        ...state.drafts,
+        {
+          localId: id,
+          filename: `${meeting.title} transcript.md`,
+          sourceId: null,
+          status: "uploading",
+          progress: null,
+          error: null,
+          attachment: null,
+        },
+      ],
+    }));
+
+    void fetchTranscript(id, meeting.granolaMeetingId);
   },
 
   remove(id) {
@@ -311,6 +344,28 @@ async function copy(
     for (const entry of wanted) {
       patch(entry.localId, { status: "error", error: message });
     }
+  }
+}
+
+async function fetchTranscript(
+  id: string,
+  granolaMeetingId: string,
+): Promise<void> {
+  try {
+    const conversationId = await ensureConversation();
+    if (!live(id)) return;
+    const attachment = await attachTranscript(conversationId, granolaMeetingId);
+    if (!live(id)) {
+      void deleteAttachment(attachment.id).catch(() => {});
+      return;
+    }
+    patch(id, { status: "ready", progress: 1, attachment });
+  } catch (err) {
+    patch(id, {
+      status: "error",
+      error:
+        err instanceof Error ? err.message : "Could not attach the transcript",
+    });
   }
 }
 

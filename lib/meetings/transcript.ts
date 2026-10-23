@@ -43,3 +43,23 @@ export function toSections(lines: TranscriptLine[]): Section[] {
 export function speakersInOrder(sections: Section[]): string[] {
   return [...new Set(sections.map((s) => s.speaker))];
 }
+
+export function transcriptDocument(
+  title: string,
+  metAt: string,
+  lines: TranscriptLine[],
+): string {
+  const turns: TranscriptLine[] = [];
+  for (const line of lines) {
+    const text = line.text.trim();
+    if (!text) continue;
+    const last = turns.at(-1);
+    if (last && last.speaker === line.speaker) {
+      last.text = `${last.text} ${text}`;
+    } else {
+      turns.push({ speaker: line.speaker, text });
+    }
+  }
+  const body = turns.map((turn) => `${turn.speaker}: ${turn.text}`);
+  return [`# ${title}`, `Meeting transcript, ${metAt}`, ...body].join("\n\n");
+}

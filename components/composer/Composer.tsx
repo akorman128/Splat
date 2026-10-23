@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Clock,
   GitBranch,
+  Headphones,
   Loader2,
   Paperclip,
   RefreshCw,
@@ -40,6 +41,7 @@ import { WebSearchMenu } from "./WebSearchMenu";
 import { SkillMenu, matchSkills, skillTriggerAt, type SkillTrigger } from "./SkillMenu";
 import { AttachmentChips } from "./AttachmentChips";
 import { AttachmentLibrary } from "./AttachmentLibrary";
+import { TranscriptPicker } from "./TranscriptPicker";
 import { useGraphStore } from "@/lib/store/graph-store";
 import { useComposerStore } from "@/lib/store/composer-store";
 import {
@@ -114,6 +116,7 @@ export function Composer({
   >({});
   const [dragging, setDragging] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [transcriptsOpen, setTranscriptsOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -703,7 +706,7 @@ export function Composer({
                   <Paperclip />
                   <span className="sr-only">Attach a file</span>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="w-52">
+                <DropdownMenuContent side="top" align="start" className="w-60">
                   <DropdownMenuItem
                     onClick={() => fileInputRef.current?.click()}
                   >
@@ -714,11 +717,21 @@ export function Composer({
                     <Clock className="size-4" />
                     Attach an earlier file
                   </DropdownMenuItem>
+                  {centered && (
+                    <DropdownMenuItem onClick={() => setTranscriptsOpen(true)}>
+                      <Headphones className="size-4" />
+                      Attach a Granola transcript
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
               <AttachmentLibrary
                 open={libraryOpen}
                 onOpenChange={setLibraryOpen}
+              />
+              <TranscriptPicker
+                open={transcriptsOpen}
+                onOpenChange={setTranscriptsOpen}
               />
             </>
           )}

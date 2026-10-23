@@ -174,6 +174,23 @@ export async function reuseAttachments(
   return attachments;
 }
 
+// Importing a meeting that is already in Splat answers with the copy there, so
+// this is one path whether or not it was imported before.
+export async function attachTranscript(
+  conversationId: string,
+  granolaMeetingId: string,
+): Promise<CardAttachment> {
+  const { id } = await apiFetch<{ id: string }>(
+    "/api/meetings",
+    postJson({ granolaMeetingId }),
+  );
+  const { attachment } = await apiFetch<{ attachment: CardAttachment }>(
+    `/api/meetings/${id}/attachment`,
+    postJson({ conversationId }),
+  );
+  return attachment;
+}
+
 export async function deleteAttachment(id: string): Promise<void> {
   await apiFetch(`/api/attachments?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
