@@ -308,6 +308,22 @@ export default function Canvas() {
     };
   }, [beaconGeometry]);
 
+  // Clicking into a card selects its shape, and while a shape is selected
+  // tldraw's document listener turns ⌘C into copying the shape and ⌘X into
+  // deleting it. Text selected in the card has to win, so it is caught first.
+  useEffect(() => {
+    const keepTextCopy = (event: ClipboardEvent) => {
+      const selection = document.getSelection();
+      if (selection && !selection.isCollapsed) event.stopPropagation();
+    };
+    window.addEventListener("copy", keepTextCopy, { capture: true });
+    window.addEventListener("cut", keepTextCopy, { capture: true });
+    return () => {
+      window.removeEventListener("copy", keepTextCopy, { capture: true });
+      window.removeEventListener("cut", keepTextCopy, { capture: true });
+    };
+  }, []);
+
   function scheduleGeometryFlush() {
     if (flushTimer.current) clearTimeout(flushTimer.current);
     flushTimer.current = setTimeout(flushGeometry, 600);
