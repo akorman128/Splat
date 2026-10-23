@@ -48,13 +48,14 @@ function ownsKeys(target: EventTarget | null): boolean {
 export function MeetingPlayer({
   meeting,
   sections,
-  canPlay,
+  noKeyReason,
 }: {
   meeting: { id: string; title: string; met_at: string };
   sections: Section[];
-  canPlay: boolean;
+  noKeyReason: string | null;
 }) {
   const router = useRouter();
+  const canPlay = noKeyReason === null;
   const lengths = useMemo(() => sections.map((s) => s.text.length), [sections]);
   const {
     current,
@@ -200,8 +201,7 @@ export function MeetingPlayer({
             </div>
             {!canPlay && (
               <p className="rounded-lg border p-3 text-sm text-muted-foreground">
-                Meetings are read aloud through OpenRouter. Add an OpenRouter
-                key in{" "}
+                {noKeyReason} Add an OpenRouter key in{" "}
                 <Link href="/settings" className="text-foreground underline">
                   Settings
                 </Link>{" "}
