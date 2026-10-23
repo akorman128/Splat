@@ -103,6 +103,12 @@ export async function openrouterKey(
   }
 }
 
+export function noSpeechKeyReason(hasAnthropicKey: boolean): string {
+  return hasAnthropicKey
+    ? "Anthropic doesn't offer text-to-speech, so meetings are read aloud through OpenRouter."
+    : "Meetings are read aloud through OpenRouter.";
+}
+
 // A 401 means the grant is gone on Granola's side, so the stored session is
 // dropped and Settings offers a fresh sign-in instead of a dead "Connected".
 export async function granolaFailure(
