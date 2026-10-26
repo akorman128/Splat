@@ -182,8 +182,11 @@ export function AppSidebar({
     }
     await removeAttachmentObjects(paths);
     const wasOpen = pathname === `/c/${pendingDelete.id}`;
+    const next = shown.find((c) => c.id !== pendingDelete.id);
     setPendingDelete(null);
-    if (wasOpen) router.push("/c");
+    // Not via /c: its server redirect lands as a second navigation that
+    // discards the queued refresh, and the deleted canvas stays listed.
+    if (wasOpen) router.push(next ? `/c/${next.id}` : "/c/new");
     router.refresh();
   }
 
